@@ -1,26 +1,69 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <div id="app">
+    <div :class="{ 'main-blurred': showModal }">
+      <HeroSection />
+      <FeaturedSection />
+      <LiveScores />
+      <RecentWinnings />
+      <FooterSection />
+    </div>
+
+    <IntroModal v-if="showModal" @close="closeModal" />
+    <Odd2FloatingWidget v-if="showWidget" @open="reopenModal" />
+    <WhatsAppButton />
+  </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import IntroModal from './components/IntroModal.vue'
+import HeroSection from './components/HeroSection.vue'
+import FeaturedSection from './components/FeaturedSection.vue'
+import LiveScores from './components/LiveScores.vue'
+import RecentWinnings from './components/RecentWinnings.vue'
+import FooterSection from './components/FooterSection.vue'
+import WhatsAppButton from './components/WhatsAppButton.vue'
+import Odd2FloatingWidget from './components/Odd2FloatingWidget.vue'
+import './assets/styles/global.css'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    IntroModal,
+    HeroSection,
+    FeaturedSection,
+    LiveScores,
+    RecentWinnings,
+    FooterSection,
+    WhatsAppButton,
+    Odd2FloatingWidget
+  },
+  data() {
+    return {
+      showModal: true,
+      showWidget: false
+    }
+  },
+  methods: {
+    closeModal() {
+      this.showModal = false
+      this.showWidget = true
+    },
+    reopenModal() {
+      this.showWidget = false
+      this.showModal = true
+    }
   }
 }
 </script>
 
 <style>
 #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+  min-height: 100vh;
+}
+.main-blurred {
+  filter: blur(4px);
+  pointer-events: none;
+  user-select: none;
+  transition: filter 0.3s ease;
 }
 </style>
