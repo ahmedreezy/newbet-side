@@ -53,7 +53,7 @@
     <!-- Bottom bar -->
     <div class="footer-bottom">
       <div class="container">
-        <p class="copyright">© 2026 BetTips Pro. All rights reserved.</p>
+        <p class="copyright">© 2026 Almax Football Predictions. All rights reserved.</p>
         <p class="disclaimer">
           Gambling can be addictive. Please play responsibly. Must be 18+.
         </p>

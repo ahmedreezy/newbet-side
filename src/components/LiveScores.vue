@@ -9,19 +9,6 @@
       </button>
     </div>
 
-    <!-- League filter tabs -->
-    <div class="league-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.label"
-        :class="['tab-btn', { active: activeTab === tab.label }]"
-        @click="activeTab = tab.label"
-      >
-        <span v-if="tab.icon">{{ tab.icon }}</span>
-        {{ tab.label }}
-      </button>
-    </div>
-
     <!-- Loading -->
     <div v-if="loading" class="state-box">
       <div class="spinner"></div>
@@ -103,25 +90,9 @@
 <script>
 import axios from 'axios'
 
-const API_KEY = '5e7d4d73f1c75286071611d5ce7397ab'
 const CACHE_TTL = 60000 // 60 seconds
-const SEASON = 2024    // current European season
-
-// League IDs from api-football.com
-const LEAGUE_IDS = {
-  'Premier League':   39,
-  'Champions League': 2,
-  'Europa League':    3,
-  'La Liga':          140,
-  'Serie A':          135,
-  'Bundesliga':       78,
-  'Ligue 1':          61,
-  'World Cup Qual.':  32,
-}
-
-// Per-tab cache so switching tabs doesn't bust the others
-const _cache = {}
-const _cacheTime = {}
+let _cache = null
+let _cacheTime = 0
 
 export default {
   name: 'LiveScores',
@@ -131,18 +102,6 @@ export default {
       loading: false,
       error: false,
       errorMsg: '',
-      activeTab: 'All',
-      tabs: [
-        { label: 'All' },
-        { label: 'Premier League',   icon: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-        { label: 'Champions League', icon: '⭐' },
-        { label: 'Europa League',    icon: '🔶' },
-        { label: 'La Liga',          icon: '🇪🇸' },
-        { label: 'Serie A',          icon: '🇮🇹' },
-        { label: 'Bundesliga',       icon: '🇩🇪' },
-        { label: 'Ligue 1',          icon: '🇫🇷' },
-        { label: 'World Cup Qual.',  icon: '🌍' },
-      ],
       showAll: false,
       refreshInterval: null
     }
@@ -150,7 +109,7 @@ export default {
   computed: {
     displayedMatches() {
       if (this.showAll) return this.matches
-      return this.matches.slice(0, 4)
+      return this.matches.slice(0, 6)
     },
     hasLive() {
       return this.matches.some(m =>
@@ -158,20 +117,12 @@ export default {
       )
     }
   },
-  watch: {
-    activeTab(newTab) {
-      this.fetchForTab(newTab)
-    }
-  },
   methods: {
-    fetchScores() {
-      this.fetchForTab(this.activeTab)
-    },
-    async fetchForTab(tab) {
+    async fetchScores() {
       this.showAll = false
       const now = Date.now()
-      if (_cache[tab] && now - (_cacheTime[tab] || 0) < CACHE_TTL) {
-        this.matches = _cache[tab]
+      if (_cache && now - _cacheTime < CACHE_TTL) {
+        this.matches = _cache
         return
       }
 
@@ -180,28 +131,14 @@ export default {
       this.errorMsg = ''
 
       try {
-        let params
-        const url = 'https://v3.football.api-sports.io/fixtures'
-
-        if (tab === 'All') {
-          // Today's fixtures across all leagues
-          const d = new Date()
-          const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-          params = {
-            date: today,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }
-        } else {
-          // Next upcoming fixtures for this specific league
-          const leagueId = LEAGUE_IDS[tab]
-          if (!leagueId) { this.matches = []; this.loading = false; return }
-          params = { league: leagueId, season: SEASON, next: 15 }
+        const d = new Date()
+        const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const params = {
+          date: today,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         }
 
-        const { data } = await axios.get(url, {
-          params,
-          headers: { 'x-apisports-key': API_KEY }
-        })
+        const { data } = await axios.get('/api/livescores', { params })
 
         // Sort: LIVE → upcoming by time → finished
         const liveSet = new Set(['1H', '2H', 'ET', 'P', 'HT'])
@@ -214,8 +151,8 @@ export default {
         })
 
         this.matches = sorted
-        _cache[tab] = sorted
-        _cacheTime[tab] = Date.now()
+        _cache = sorted
+        _cacheTime = Date.now()
 
       } catch (err) {
         console.error('Fixtures API error:', err?.response?.status, err?.response?.data)
@@ -242,8 +179,8 @@ export default {
     }
   },
   mounted() {
-    this.fetchForTab(this.activeTab)
-    this.refreshInterval = setInterval(() => this.fetchForTab(this.activeTab), CACHE_TTL)
+    this.fetchScores()
+    this.refreshInterval = setInterval(() => this.fetchScores(), CACHE_TTL)
   },
   beforeUnmount() {
     clearInterval(this.refreshInterval)
@@ -297,34 +234,6 @@ export default {
 }
 .refresh-badge:hover:not(:disabled) { background: rgba(255, 215, 0, 0.1); }
 .refresh-badge:disabled { opacity: 0.5; cursor: default; }
-
-/* Tabs */
-.league-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 28px;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.tab-btn {
-  background: var(--dark-card);
-  border: 1px solid rgba(255, 215, 0, 0.2);
-  color: var(--text-muted);
-  padding: 8px 18px;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-}
-.tab-btn.active,
-.tab-btn:hover {
-  background: var(--gold-dark);
-  color: var(--dark);
-  border-color: var(--gold);
-  font-weight: 700;
-}
 
 /* Scores grid */
 .scores-grid {

@@ -1,0 +1,64 @@
+{
+  "football_tips": [
+    {
+      "id": 1776454444934,
+      "home": "NJKKK",
+      "away": "JJ3JJ3J",
+      "competition": "33JJ33J",
+      "kickoff": "N33N3",
+      "winProb": 75,
+      "kitColor": "#00ff91",
+      "kitNumber": "10",
+      "prediction": "JJ3J3J",
+      "accent": "#00ff91",
+      "createdAt": 1776454444934
+    },
+    {
+      "id": 1776585520067,
+      "home": " w wmwmw",
+      "away": ",,w,,w,w,,",
+      "competition": " wwmwmwm",
+      "kickoff": ",w,w,,w,",
+      "winProb": 75,
+      "kitColor": "#FFD700",
+      "kitNumber": "10",
+      "prediction": "wmwmwwm",
+      "accent": "#FFD700",
+      "createdAt": 1776585520067
+    }
+  ],
+  "almax_predictions": [],
+  "recent_wins": [
+    {
+      "id": 1776585615524,
+      "betType": "mwmwwmwm",
+      "date": "wmwmwmwm",
+      "staked": ",,d,",
+      "returned": " ww  w ",
+      "odds": "32",
+      "memberName": "",
+      "imageUrl": "",
+      "createdAt": 1776585615524
+    },
+    {
+      "id": 1776586980064,
+      "betType": "jjjj",
+      "date": "nnnnen",
+      "staked": "jjjej",
+      "returned": "meemme",
+      "odds": "21",
+      "memberName": "enem",
+      "imageUrl": "/uploads/1776586979935_Betslip_Flat_Design_-_Free_Psd__by_Luis_M_Ruiz.jpg",
+      "createdAt": 1776586980064
+    }
+  ],
+  "free_odd2": {
+    "id": 1,
+    "teamA": "ARSENAL",
+    "teamB": "MAN CITY",
+    "pick": "Over 2.5 Goals",
+    "odd": "2.00",
+    "time": "20:45",
+    "competition": "Premier League"
+  }
+}

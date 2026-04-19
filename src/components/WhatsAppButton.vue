@@ -39,7 +39,6 @@ export default {
   font-size: 14px;
   text-decoration: none;
   transition: transform 0.2s, box-shadow 0.2s;
-  position: fixed;
   cursor: pointer;
 }
 .whatsapp-btn:hover {

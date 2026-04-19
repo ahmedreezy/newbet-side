@@ -170,62 +170,39 @@
       </div>
     </transition>
 
-    <!-- ── FORMULA 1 ── -->
-    <div class="f1-wrap container">
-      <div class="section-header">
-        <div class="f1-title-row">
-          <span class="f1-flag-icon">🏁</span>
-          <h2>FORMULA <span class="gold-text">1</span> <span class="f1-tips-tag">TIPS</span></h2>
-        </div>
-        <p class="section-sub">Race-weekend predictions from our analysts</p>
-      </div>
-
-      <!-- Featured race banner -->
-      <div class="f1-race-banner">
-        <div class="race-banner-left">
-          <span class="race-round">ROUND {{ nextRace.round }}</span>
-          <div class="race-name">{{ nextRace.name }}</div>
-          <div class="race-circuit">{{ nextRace.circuit }}</div>
-        </div>
-        <div class="race-banner-right">
-          <div class="race-flag">{{ nextRace.flag }}</div>
-        </div>
-      </div>
-
-      <!-- Driver tips -->
-      <div class="f1-grid">
-        <div v-for="tip in f1Tips" :key="tip.id" class="f1-card">
-          <div class="f1-team-stripe" :style="{ background: tip.teamColor }"></div>
-          <div class="f1-driver-avatar" :style="{ background: tip.teamColor }">
-            <span>{{ tip.initials }}</span>
-          </div>
-          <div class="f1-content">
-            <div class="f1-driver-name">{{ tip.driver }}</div>
-            <div class="f1-team">{{ tip.team }}</div>
-            <div class="f1-pick-row">
-              <span class="f1-pick-label">PICK</span>
-              <span class="f1-pick-val">{{ tip.pick }}</span>
-            </div>
-          </div>
-          <div class="f1-odd-block">
-            <span class="f1-odd">{{ tip.odd }}</span>
-            <span class="f1-odd-label">ODD</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- F1 parlay suggestion -->
-      <div class="f1-parlay">
-        <span class="parlay-badge">⚡ ANALYST PARLAY</span>
-        <span class="parlay-text">Verstappen Win + Norris Podium + Fastest Lap</span>
-        <span class="parlay-odd">@{{ f1ParlayOdd }}</span>
-      </div>
-    </div>
-
   </section>
 </template>
 
 <script>
+import axios from 'axios'
+
+const STATIC_PICKS = [
+  {
+    id: 1, home: 'Man City', away: 'Arsenal',
+    competition: 'Premier League', kickoff: '20:00',
+    kitColor: '#6CABDD', kitNumber: '10', accent: '#6CABDD',
+    winProb: 78
+  },
+  {
+    id: 2, home: 'Real Madrid', away: 'Barcelona',
+    competition: 'La Liga', kickoff: '21:00',
+    kitColor: '#FEBE10', kitNumber: '9', accent: '#FEBE10',
+    winProb: 82
+  },
+  {
+    id: 3, home: 'Bayern Munich', away: 'Dortmund',
+    competition: 'Bundesliga', kickoff: '18:30',
+    kitColor: '#DC052D', kitNumber: '8', accent: '#DC052D',
+    winProb: 71
+  },
+  {
+    id: 4, home: 'PSG', away: 'Lyon',
+    competition: 'Ligue 1', kickoff: '21:05',
+    kitColor: '#004170', kitNumber: '7', accent: '#004170',
+    winProb: 85
+  }
+]
+
 export default {
   name: 'FeaturedSection',
   data() {
@@ -250,48 +227,28 @@ export default {
         { id:7,  char:'🎯', style:{ top:'42%', right:'2%', fontSize:'62px', animationDelay:'2.5s', opacity:0.36 } },
         { id:8,  char:'⚽', style:{ top:'90%', left:'50%', fontSize:'82px', animationDelay:'1s',   opacity:0.40 } },
       ],
-      todayPicks: [
-        {
-          id: 1, home: 'Man City', away: 'Arsenal',
-          competition: 'Premier League', kickoff: '20:00',
-          kitColor: '#6CABDD', kitNumber: '10', accent: '#6CABDD',
-          winProb: 78
-        },
-        {
-          id: 2, home: 'Real Madrid', away: 'Barcelona',
-          competition: 'La Liga', kickoff: '21:00',
-          kitColor: '#FEBE10', kitNumber: '9', accent: '#FEBE10',
-          winProb: 82
-        },
-        {
-          id: 3, home: 'Bayern Munich', away: 'Dortmund',
-          competition: 'Bundesliga', kickoff: '18:30',
-          kitColor: '#DC052D', kitNumber: '8', accent: '#DC052D',
-          winProb: 71
-        },
-        {
-          id: 4, home: 'PSG', away: 'Lyon',
-          competition: 'Ligue 1', kickoff: '21:05',
-          kitColor: '#004170', kitNumber: '7', accent: '#004170',
-          winProb: 85
-        }
-      ],
-      nextRace: {
-        round: 5,
-        name: 'Miami Grand Prix',
-        circuit: 'Miami International Autodrome',
-        flag: '🇺🇸'
-      },
-      f1Tips: [
-        { id:1, driver:'Max Verstappen', team:'Red Bull Racing', initials:'MV', pick:'Race Winner',   odd:'2.20', teamColor:'linear-gradient(135deg,#1E3A5F,#3B82C4)' },
-        { id:2, driver:'Lando Norris',   team:'McLaren',         initials:'LN', pick:'Podium Finish', odd:'1.65', teamColor:'linear-gradient(135deg,#CC4A00,#FF8000)' },
-        { id:3, driver:'Charles Leclerc',team:'Ferrari',         initials:'CL', pick:'Top 5 Finish',  odd:'1.45', teamColor:'linear-gradient(135deg,#990000,#DC0000)' },
-        { id:4, driver:'George Russell', team:'Mercedes',        initials:'GR', pick:'Fastest Lap',   odd:'3.80', teamColor:'linear-gradient(135deg,#006B5F,#00D2BE)' }
-      ],
-      f1ParlayOdd: '7.40'
+      todayPicks: [...STATIC_PICKS]
     }
   },
+  async mounted() {
+    await this.fetchTips()
+    this._pollInterval = setInterval(this.fetchTips, 30000)
+    this._onVisible = () => { if (!document.hidden) this.fetchTips() }
+    document.addEventListener('visibilitychange', this._onVisible)
+  },
+  beforeUnmount() {
+    clearInterval(this._pollInterval)
+    document.removeEventListener('visibilitychange', this._onVisible)
+  },
   methods: {
+    async fetchTips() {
+      try {
+        const { data } = await axios.get('/api/football-tips')
+        this.todayPicks = (data && data.length > 0) ? data : [...STATIC_PICKS]
+      } catch {
+        // Server unavailable — static picks remain
+      }
+    },
     openVipMenu() {
       this.showVipMenu = true
     }
@@ -659,107 +616,9 @@ export default {
   margin-top: 8px;
 }
 
-/* ── F1 ── */
-.f1-title-row { display: flex; align-items: center; gap: 12px; }
-.f1-flag-icon { font-size: 28px; }
-.f1-tips-tag {
-  font-size: 14px;
-  background: rgba(255,215,0,0.12);
-  color: var(--gold);
-  padding: 2px 10px;
-  border-radius: 6px;
-  vertical-align: middle;
-  margin-left: 6px;
-}
-
-.f1-race-banner {
-  background: linear-gradient(135deg, #0d0d0d, #1a1200);
-  border: 1px solid rgba(255,215,0,0.2);
-  border-radius: 16px;
-  padding: 24px 28px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  position: relative;
-  overflow: hidden;
-}
-.f1-race-banner::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  background: var(--gold);
-}
-.race-banner-left { display: flex; flex-direction: column; gap: 6px; }
-.race-round { font-size: 11px; font-weight: 700; color: var(--gold); letter-spacing: 2px; }
-.race-name  { font-size: 22px; font-weight: 900; color: var(--white); }
-.race-circuit { font-size: 13px; color: var(--text-muted); }
-.race-banner-right .race-flag { font-size: 52px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
-
-.f1-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.f1-card {
-  background: var(--dark-card);
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.06);
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.2s, border-color 0.2s;
-}
-.f1-card:hover { transform: translateY(-3px); border-color: rgba(255,215,0,0.25); }
-.f1-team-stripe { position: absolute; top: 0; left: 0; width: 3px; height: 100%; border-radius: 3px 0 0 3px; }
-.f1-driver-avatar {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 900; color: #fff; flex-shrink: 0;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-}
-.f1-content { flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.f1-driver-name { font-size: 14px; font-weight: 800; color: var(--white); }
-.f1-team { font-size: 11px; color: var(--text-muted); }
-.f1-pick-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.f1-pick-label {
-  font-size: 9px; font-weight: 700; color: var(--text-muted);
-  letter-spacing: 1px; background: rgba(255,255,255,0.07);
-  padding: 2px 6px; border-radius: 4px;
-}
-.f1-pick-val { font-size: 12px; color: var(--cream); font-weight: 600; }
-.f1-odd-block { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.f1-odd { font-size: 22px; font-weight: 900; color: var(--gold); text-shadow: 0 0 12px rgba(255,215,0,0.35); }
-.f1-odd-label { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; font-weight: 700; }
-
-.f1-parlay {
-  background: linear-gradient(135deg, rgba(255,215,0,0.07), rgba(255,215,0,0.03));
-  border: 1px solid rgba(255,215,0,0.25);
-  border-radius: 12px;
-  padding: 14px 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.parlay-badge {
-  background: var(--gold); color: var(--dark);
-  font-size: 10px; font-weight: 800;
-  padding: 3px 10px; border-radius: 20px; white-space: nowrap;
-}
-.parlay-text { flex: 1; font-size: 13px; color: var(--cream); min-width: 200px; }
-.parlay-odd  { font-size: 22px; font-weight: 900; color: var(--gold); }
-
 /* Responsive */
 @media (max-width: 640px) {
   .picks-grid { grid-template-columns: 1fr; }
-  .f1-grid    { grid-template-columns: 1fr; }
-  .race-name  { font-size: 17px; }
   .sh-row     { flex-direction: column; align-items: flex-start; }
 }
 </style>

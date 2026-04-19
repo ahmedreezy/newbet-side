@@ -17,9 +17,16 @@
             <span class="win-date">{{ win.date }}</span>
           </div>
 
-          <!-- Slip image placeholder (will be replaced by uploaded images) -->
+          <!-- Slip image: show uploaded if available, otherwise placeholder -->
           <div class="slip-placeholder">
-            <div class="slip-inner">
+            <img
+              v-if="win.imageUrl"
+              :src="win.imageUrl"
+              :alt="win.betType + ' winning slip'"
+              class="slip-image"
+              loading="lazy"
+            />
+            <div v-else class="slip-inner">
               <span class="slip-emoji">🎫</span>
               <span class="slip-label">Winning Slip</span>
               <span class="slip-note">Image coming soon</span>
@@ -53,18 +60,42 @@
 </template>
 
 <script>
+import axios from 'axios'
+
+const STATIC_WINS = [
+  { id: 1, betType: 'Accumulator', date: 'Apr 14, 2026', staked: '$10', returned: '$210', odds: '21.00', imageUrl: '' },
+  { id: 2, betType: 'Over 2.5',    date: 'Apr 13, 2026', staked: '$20', returned: '$38',  odds: '1.90',  imageUrl: '' },
+  { id: 3, betType: 'Double',      date: 'Apr 12, 2026', staked: '$15', returned: '$72',  odds: '4.80',  imageUrl: '' },
+  { id: 4, betType: 'Both Score',  date: 'Apr 11, 2026', staked: '$25', returned: '$47',  odds: '1.88',  imageUrl: '' },
+  { id: 5, betType: 'Treble',      date: 'Apr 10, 2026', staked: '$10', returned: '$155', odds: '15.50', imageUrl: '' },
+  { id: 6, betType: 'Accumulator', date: 'Apr 9, 2026',  staked: '$5',  returned: '$85',  odds: '17.00', imageUrl: '' }
+]
+
 export default {
   name: 'RecentWinnings',
   data() {
     return {
-      winnings: [
-        { id: 1, betType: 'Accumulator', date: 'Apr 14, 2026', staked: '$10', returned: '$210', odds: '21.00' },
-        { id: 2, betType: 'Over 2.5',    date: 'Apr 13, 2026', staked: '$20', returned: '$38',  odds: '1.90'  },
-        { id: 3, betType: 'Double',      date: 'Apr 12, 2026', staked: '$15', returned: '$72',  odds: '4.80'  },
-        { id: 4, betType: 'Both Score',  date: 'Apr 11, 2026', staked: '$25', returned: '$47',  odds: '1.88'  },
-        { id: 5, betType: 'Treble',      date: 'Apr 10, 2026', staked: '$10', returned: '$155', odds: '15.50' },
-        { id: 6, betType: 'Accumulator', date: 'Apr 9, 2026',  staked: '$5',  returned: '$85',  odds: '17.00' }
-      ]
+      winnings: [...STATIC_WINS]
+    }
+  },
+  mounted() {
+    this.fetchWins()
+    this._pollInterval = setInterval(this.fetchWins, 30000)
+    this._onVisible = () => { if (!document.hidden) this.fetchWins() }
+    document.addEventListener('visibilitychange', this._onVisible)
+  },
+  beforeUnmount() {
+    clearInterval(this._pollInterval)
+    document.removeEventListener('visibilitychange', this._onVisible)
+  },
+  methods: {
+    async fetchWins() {
+      try {
+        const { data } = await axios.get('/api/recent-wins')
+        this.winnings = (data && data.length > 0) ? data : [...STATIC_WINS]
+      } catch {
+        // Server unavailable — static wins remain
+      }
     }
   }
 }
@@ -158,6 +189,14 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+.slip-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px;
 }
 .slip-inner {
   display: flex;

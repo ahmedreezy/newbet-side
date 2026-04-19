@@ -12,13 +12,13 @@
 
     <!-- Main content -->
     <div class="hero-content">
-      <div class="hero-badge">🏆 #1 FREE BETTING TIPS</div>
+      <div class="hero-badge">🏆 ALMAX FOOTBALL PREDICTIONS</div>
       <h1 class="hero-title">
-        WIN <span class="gold-text">BIG</span><br />
-        WITH EXPERT <span class="gold-text">PREDICTIONS</span>
+        WIN <span class="gold-text">BIG</span> WITH EXPERT<br />
+        <span class="gold-text">ALMAX</span> PREDICTIONS
       </h1>
       <p class="hero-sub">
-        Daily free tips, live scores &amp; VIP winnings — all in one place.
+        Daily free tips, live scores &amp; VIP winnings — powered by Almax.
       </p>
       <div class="hero-stats">
         <div class="stat">
@@ -26,8 +26,8 @@
           <span class="stat-label">Win Rate</span>
         </div>
         <div class="stat-divider"></div>
-        <div class="stat">
-          <span class="stat-num">12K+</span>
+        <div class="stat" ref="memberStat">
+          <span :class="['stat-num', 'members-counter', { 'stat-pop': counterDone }]">{{ displayCounter }}</span>
           <span class="stat-label">Members</span>
         </div>
         <div class="stat-divider"></div>
@@ -52,6 +52,8 @@ export default {
   name: 'HeroSection',
   data() {
     return {
+      counterValue: 0,
+      counterDone: false,
       bgIcons: [
         { id: 1,  char: '⚽', style: { top: '10%',  left: '5%',   animationDelay: '0s',    fontSize: '40px' } },
         { id: 2,  char: '🏆', style: { top: '20%',  left: '80%',  animationDelay: '1s',    fontSize: '35px' } },
@@ -66,6 +68,39 @@ export default {
         { id: 11, char: '🏟', style: { top: '5%',   left: '35%',  animationDelay: '1.7s',  fontSize: '32px' } },
         { id: 12, char: '💵', style: { top: '90%',  left: '70%',  animationDelay: '0.3s',  fontSize: '28px' } },
       ]
+    }
+  },
+  computed: {
+    displayCounter() {
+      if (this.counterValue >= 1000) {
+        return Math.round(this.counterValue / 1000) + 'K+'
+      }
+      return this.counterValue + '+'
+    }
+  },
+  mounted() {
+    this.$nextTick(() => {
+      this.animateCounter()
+    })
+  },
+  methods: {
+    animateCounter() {
+      const TARGET = 12000
+      const DURATION = 2000
+      const start = performance.now()
+      const step = (now) => {
+        const elapsed = now - start
+        const progress = Math.min(elapsed / DURATION, 1)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        this.counterValue = Math.round(eased * TARGET)
+        if (progress < 1) {
+          requestAnimationFrame(step)
+        } else {
+          this.counterValue = TARGET
+          this.counterDone = true
+        }
+      }
+      requestAnimationFrame(step)
     }
   }
 }
@@ -89,10 +124,10 @@ export default {
 .bg-icons { position: absolute; inset: 0; pointer-events: none; }
 .bg-icon {
   position: absolute;
-  opacity: 0.22;
+  opacity: 0.55;
   animation: floatIcon 6s ease-in-out infinite;
   user-select: none;
-  filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.3));
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
 }
 @keyframes floatIcon {
   0%, 100% { transform: translateY(0)    rotate(0deg); }
@@ -151,6 +186,19 @@ export default {
   font-size: 30px;
   font-weight: 900;
   color: var(--gold);
+}
+.members-counter {
+  display: inline-block;
+  transition: transform 0.15s;
+}
+@keyframes statPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.3); }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.stat-pop {
+  animation: statPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 .stat-label {
   font-size: 12px;

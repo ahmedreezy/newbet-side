@@ -5,27 +5,30 @@
       <div class="modal-badge">⚡ TODAY'S SPECIAL</div>
       <h2 class="modal-title">FREE ODD 2 OF THE DAY</h2>
 
-      <div class="odd-card">
+      <div v-if="fetchLoading" class="odd-card loading-card">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>
+      <div v-else class="odd-card">
         <div class="match">
-          <span class="team">Team A</span>
+          <span class="team">{{ odd.teamA }}</span>
           <span class="vs">VS</span>
-          <span class="team">Team B</span>
+          <span class="team">{{ odd.teamB }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">PICK</span>
-          <span class="detail-value">Over 2.5 Goals</span>
+          <span class="detail-value">{{ odd.pick }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">ODD</span>
-          <span class="odd-number">2.00</span>
+          <span class="odd-number">{{ odd.odd }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">TIME</span>
-          <span class="detail-value">20:45</span>
+          <span class="detail-value">{{ odd.time }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">COMPETITION</span>
-          <span class="detail-value">Premier League</span>
+          <span class="detail-value">{{ odd.competition }}</span>
         </div>
       </div>
 
@@ -36,9 +39,42 @@
 </template>
 
 <script>
+import axios from 'axios'
+
+const DEFAULT = {
+  teamA: 'Team A', teamB: 'Team B',
+  pick: 'Over 2.5 Goals', odd: '2.00',
+  time: '20:45', competition: 'Premier League'
+}
+
 export default {
   name: 'IntroModal',
-  emits: ['close']
+  emits: ['close'],
+  data() {
+    return {
+      odd: { ...DEFAULT },
+      fetchLoading: true
+    }
+  },
+  async mounted() {
+    await this.fetchOdd()
+    this._pollInterval = setInterval(this.fetchOdd, 30000)
+  },
+  beforeUnmount() {
+    clearInterval(this._pollInterval)
+  },
+  methods: {
+    async fetchOdd() {
+      try {
+        const { data } = await axios.get('/api/config/free-odd2')
+        if (data) this.odd = { ...DEFAULT, ...data }
+      } catch {
+        // Server not reachable — keep defaults
+      } finally {
+        this.fetchLoading = false
+      }
+    }
+  }
 }
 </script>
 
@@ -183,5 +219,25 @@ export default {
 .cta-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+.loading-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+.loading-dots { display: flex; gap: 8px; }
+.loading-dots span {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.5;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.8); opacity: 0.4; }
+  40%            { transform: scale(1.2); opacity: 1;   }
 }
 </style>
