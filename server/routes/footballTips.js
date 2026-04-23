@@ -1,46 +1,99 @@
-const express = require('express')
-const router  = express.Router()
-const db      = require('../db')
+const express  = require('express')
+const path     = require('path')
+const fs       = require('fs')
+const multer   = require('multer')
+const router   = express.Router()
+const { pool } = require('../db')
+const auth     = require('../middleware/authMiddleware')
 
-// GET all tips ordered by createdAt ASC
-router.get('/', (req, res) => {
-  const data = db.read()
-  const tips = [...data.football_tips].sort((a, b) => a.createdAt - b.createdAt)
-  res.json(tips)
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads')
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename:    (_req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')
+    cb(null, `tip_${Date.now()}_${safe}`)
+  }
+})
+const fileFilter = (_req, file, cb) => {
+  cb(null, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype))
+}
+const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } })
+
+function rowToTip(row) {
+  return {
+    id:         row.id,
+    home:       row.home,
+    away:       row.away,
+    competition: row.competition,
+    kickoff:    row.kickoff,
+    winProb:    row.win_prob,
+    kitColor:   row.kit_color,
+    kitNumber:  row.kit_number,
+    prediction: row.prediction,
+    accent:     row.accent,
+    imageUrl:   row.image_url,
+    createdAt:  row.created_at ? new Date(row.created_at).getTime() : null
+  }
+}
+
+// GET all tips (public)
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM football_tips ORDER BY created_at ASC')
+    res.json(rows.map(rowToTip))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
-// POST a new tip
-router.post('/', (req, res) => {
+// POST a new tip (admin)
+router.post('/', auth, upload.single('image'), async (req, res) => {
   const { home, away, competition, kickoff, winProb, kitColor, kitNumber, prediction, accent } = req.body
   if (!home || !away || !competition || !kickoff) {
+    if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {}
     return res.status(400).json({ error: 'home, away, competition, kickoff are required' })
   }
-  const data = db.read()
-  const id   = Date.now()
-  const tip  = {
-    id,
-    home, away, competition, kickoff,
-    winProb:    winProb    ?? 75,
-    kitColor:   kitColor   ?? '#FFD700',
-    kitNumber:  kitNumber  ?? '10',
-    prediction: prediction ?? '',
-    accent:     accent     ?? kitColor ?? '#FFD700',
-    createdAt: id
+  try {
+    const imageUrl = req.file ? `/uploads/${req.file.filename}` : ''
+    const { rows: [tip] } = await pool.query(`
+      INSERT INTO football_tips (home, away, competition, kickoff, win_prob, kit_color, kit_number, prediction, accent, image_url)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING *
+    `, [
+      home, away, competition, kickoff,
+      parseInt(winProb) || 75,
+      kitColor   || '#FFD700',
+      kitNumber  || '10',
+      prediction || '',
+      accent     || kitColor || '#FFD700',
+      imageUrl
+    ])
+    res.status(201).json(rowToTip(tip))
+  } catch (err) {
+    if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {}
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
   }
-  data.football_tips.push(tip)
-  db.write(data)
-  res.status(201).json(tip)
 })
 
-// DELETE a tip by id
-router.delete('/:id', (req, res) => {
-  const id   = Number(req.params.id)
-  const data = db.read()
-  const idx  = data.football_tips.findIndex(t => t.id === id)
-  if (idx === -1) return res.status(404).json({ error: 'Tip not found' })
-  data.football_tips.splice(idx, 1)
-  db.write(data)
-  res.json({ success: true })
+// DELETE a tip (admin)
+router.delete('/:id', auth, async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  try {
+    const { rows } = await pool.query('SELECT image_url FROM football_tips WHERE id = $1', [id])
+    if (rows.length === 0) return res.status(404).json({ error: 'Tip not found' })
+    if (rows[0].image_url) {
+      try { fs.unlinkSync(path.join(UPLOADS_DIR, path.basename(rows[0].image_url))) } catch {}
+    }
+    await pool.query('DELETE FROM football_tips WHERE id = $1', [id])
+    res.json({ success: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
 module.exports = router

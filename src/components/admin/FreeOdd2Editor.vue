@@ -1,7 +1,7 @@
 <template>
   <div class="editor">
     <p class="editor-desc">
-      Update the free Odd 2 that shows in the intro modal and floating widget. Changes go live immediately after saving.
+      Update the <strong>Free Daily Tip</strong> that shows after the video ad. Changes go live immediately after saving.
     </p>
 
     <div v-if="fetchLoading" class="state-msg">Loading current values…</div>
@@ -39,6 +39,20 @@
         </div>
       </div>
 
+      <!-- Image upload -->
+      <div class="field full-field">
+        <label>Tip Image (optional)</label>
+        <div class="img-upload-row">
+          <label class="img-upload-btn" for="tip-img-input">
+            📷 Choose Image
+          </label>
+          <input id="tip-img-input" type="file" accept="image/*" @change="onImageChange" class="hidden-file" />
+          <span v-if="imageFile" class="img-filename">{{ imageFile.name }}</span>
+          <span v-else-if="form.imageUrl" class="img-filename">Current image set ✓</span>
+        </div>
+        <img v-if="imagePreview || form.imageUrl" :src="imagePreview || ('/api/' + form.imageUrl)" class="img-preview" alt="Tip image preview" />
+      </div>
+
       <div class="form-actions">
         <button type="submit" class="save-btn" :disabled="saving">
           {{ saving ? 'Saving…' : '✓ Save & Publish' }}
@@ -52,6 +66,7 @@
     <div class="preview-wrap">
       <p class="preview-label">LIVE PREVIEW</p>
       <div class="preview-card">
+        <img v-if="imagePreview || form.imageUrl" :src="imagePreview || ('/api/' + form.imageUrl)" class="preview-img" alt="" />
         <div class="preview-match">
           <span>{{ form.teamA || 'Team A' }}</span>
           <span class="vs">VS</span>
@@ -67,13 +82,15 @@
 </template>
 
 <script>
-import axios from 'axios'
+import adminApi from '../../utils/adminApi'
 
 export default {
   name: 'FreeOdd2Editor',
   data() {
     return {
-      form: { teamA: '', teamB: '', pick: '', odd: '', time: '', competition: '' },
+      form: { teamA: '', teamB: '', pick: '', odd: '', time: '', competition: '', imageUrl: '' },
+      imageFile: null,
+      imagePreview: null,
       fetchLoading: true,
       fetchError: false,
       saving: false,
@@ -83,7 +100,7 @@ export default {
   },
   async mounted() {
     try {
-      const { data } = await axios.get('/api/config/free-odd2')
+      const { data } = await adminApi.get('/api/config/free-odd2')
       if (data) Object.assign(this.form, data)
     } catch {
       this.fetchError = true
@@ -92,12 +109,21 @@ export default {
     }
   },
   methods: {
+    onImageChange(e) {
+      const file = e.target.files[0]
+      if (!file) return
+      this.imageFile = file
+      this.imagePreview = URL.createObjectURL(file)
+    },
     async save() {
       this.saving = true
       this.saved = false
       this.saveError = ''
       try {
-        await axios.put('/api/config/free-odd2', { ...this.form, odd: String(this.form.odd) })
+        const fd = new FormData()
+        Object.entries(this.form).forEach(([k, v]) => { if (k !== 'imageUrl') fd.append(k, v) })
+        if (this.imageFile) fd.append('image', this.imageFile)
+        await adminApi.put('/api/config/free-odd2', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
         this.saved = true
         setTimeout(() => { this.saved = false }, 3000)
       } catch {
@@ -119,10 +145,17 @@ export default {
 .editor-form { background: #111; border: 1px solid rgba(255,215,0,0.1); border-radius: 14px; padding: 28px; margin-bottom: 32px; }
 .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
 .field { display: flex; flex-direction: column; gap: 8px; }
+.full-field { margin-bottom: 18px; }
 .field label { font-size: 11px; font-weight: 700; color: #888; letter-spacing: 1px; text-transform: uppercase; }
 .field input { background: #1a1a1a; border: 1px solid rgba(255,215,0,0.15); border-radius: 8px; padding: 11px 14px; color: #fff; font-size: 14px; outline: none; transition: border-color 0.2s; }
 .field input:focus { border-color: rgba(255,215,0,0.45); }
 .field input::placeholder { color: #444; }
+.hidden-file { display: none; }
+.img-upload-row { display: flex; align-items: center; gap: 12px; }
+.img-upload-btn { background: #1a1a1a; border: 1px solid rgba(255,215,0,0.2); color: #FFD700; padding: 9px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.img-upload-btn:hover { background: rgba(255,215,0,0.08); }
+.img-filename { font-size: 12px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.img-preview { margin-top: 10px; width: 100%; max-width: 320px; border-radius: 10px; object-fit: cover; max-height: 180px; }
 
 .form-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
 .save-btn { background: linear-gradient(135deg,#FFD700,#FFA500); color: #000; border: none; border-radius: 9px; padding: 12px 28px; font-size: 14px; font-weight: 800; cursor: pointer; transition: opacity 0.2s; }
@@ -130,13 +163,13 @@ export default {
 .saved-msg { color: #4caf50; font-size: 13px; font-weight: 600; }
 .error-msg { color: #ff5252; font-size: 13px; }
 
-.preview-wrap { }
 .preview-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #555; text-transform: uppercase; margin-bottom: 14px; }
-.preview-card { background: #111; border: 1px solid rgba(255,215,0,0.2); border-radius: 14px; padding: 22px 26px; max-width: 340px; }
-.preview-match { display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 16px; }
+.preview-card { background: #111; border: 1px solid rgba(255,215,0,0.2); border-radius: 14px; padding: 0; max-width: 340px; overflow: hidden; }
+.preview-img { width: 100%; max-height: 160px; object-fit: cover; display: block; }
+.preview-match { display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 700; color: #fff; padding: 16px 22px 10px; }
 .vs { color: #FFD700; font-size: 12px; }
-.preview-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.preview-row:last-child { border-bottom: none; }
+.preview-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 22px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.preview-row:last-child { border-bottom: none; padding-bottom: 16px; }
 .pl { color: #555; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
 .pv-odd { color: #FFD700; font-size: 18px; font-weight: 900; }
 

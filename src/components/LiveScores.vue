@@ -7,83 +7,90 @@
       <button class="refresh-badge" @click="fetchScores" :disabled="loading">
         {{ loading ? '…' : '↻ Refresh' }}
       </button>
-    </div>
-
-    <!-- Loading -->
-    <div v-if="loading" class="state-box">
-      <div class="spinner"></div>
-      <span>Fetching live scores…</span>
-    </div>
-
-    <!-- Error -->
-    <div v-else-if="error" class="state-box error-box">
-      <span>⚠ {{ errorMsg || 'Unable to load fixtures.' }}</span>
-      <button class="retry-btn" @click="fetchScores">Try again</button>
-    </div>
-
-    <!-- Scores -->
-    <div v-else class="scores-grid">
-      <div
-        v-for="match in displayedMatches"
-        :key="match.fixture.id"
-        class="match-card"
-      >
-        <div class="match-league">
-          {{ match.league.name }} · {{ match.league.country }}
-        </div>
-        <div class="match-body">
-          <div class="team home">
-            <img
-              :src="match.teams.home.logo"
-              :alt="match.teams.home.name"
-              class="team-logo"
-              loading="lazy"
-            />
-            <span class="team-name">{{ match.teams.home.name }}</span>
-          </div>
-          <div class="score-block">
-            <template v-if="match.fixture.status.short === 'NS'">
-              <span class="kickoff-time">{{ formatKickoff(match.fixture.date) }}</span>
-              <span class="match-status status-ns">UPCOMING</span>
-            </template>
-            <template v-else>
-              <span class="score">
-                {{ match.goals.home ?? '-' }} : {{ match.goals.away ?? '-' }}
-              </span>
-              <span :class="['match-status', statusClass(match.fixture.status.short)]">
-                {{
-                  match.fixture.status.elapsed
-                    ? match.fixture.status.elapsed + "'"
-                    : match.fixture.status.short
-                }}
-              </span>
-            </template>
-          </div>
-          <div class="team away">
-            <span class="team-name">{{ match.teams.away.name }}</span>
-            <img
-              :src="match.teams.away.logo"
-              :alt="match.teams.away.name"
-              class="team-logo"
-              loading="lazy"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div v-if="!loading && displayedMatches.length === 0" class="state-box">
-        <span class="empty-icon">📅</span>
-        <span>No matches found for today in this competition.</span>
-        <span class="empty-sub">Try the <strong>All</strong> tab or refresh later.</span>
-      </div>
-    </div>
-
-    <!-- Expand / collapse -->
-    <div v-if="!loading && !error && matches.length > 4" class="show-more-wrap">
-      <button class="show-more-btn" @click="showAll = !showAll">
-        {{ showAll ? '\u25b2 Show Less' : '\u25bc Show All ' + matches.length + ' Matches' }}
+      <button class="minimize-btn" @click="minimized = !minimized" :title="minimized ? 'Expand' : 'Minimize'">
+        {{ minimized ? '▼ Expand' : '▲ Minimize' }}
       </button>
     </div>
+
+    <transition name="collapse">
+      <div v-show="!minimized" class="scores-content">
+        <!-- Loading -->
+        <div v-if="loading" class="state-box">
+          <div class="spinner"></div>
+          <span>Fetching live scores…</span>
+        </div>
+
+        <!-- Error -->
+        <div v-else-if="error" class="state-box error-box">
+          <span>⚠ {{ errorMsg || 'Unable to load fixtures.' }}</span>
+          <button class="retry-btn" @click="fetchScores">Try again</button>
+        </div>
+
+        <!-- Scores -->
+        <div v-else class="scores-grid">
+          <div
+            v-for="match in displayedMatches"
+            :key="match.fixture.id"
+            class="match-card"
+          >
+            <div class="match-league">
+              {{ match.league.name }} · {{ match.league.country }}
+            </div>
+            <div class="match-body">
+              <div class="team home">
+                <img
+                  :src="match.teams.home.logo"
+                  :alt="match.teams.home.name"
+                  class="team-logo"
+                  loading="lazy"
+                />
+                <span class="team-name">{{ match.teams.home.name }}</span>
+              </div>
+              <div class="score-block">
+                <template v-if="match.fixture.status.short === 'NS'">
+                  <span class="kickoff-time">{{ formatKickoff(match.fixture.date) }}</span>
+                  <span class="match-status status-ns">UPCOMING</span>
+                </template>
+                <template v-else>
+                  <span class="score">
+                    {{ match.goals.home ?? '-' }} : {{ match.goals.away ?? '-' }}
+                  </span>
+                  <span :class="['match-status', statusClass(match.fixture.status.short)]">
+                    {{
+                      match.fixture.status.elapsed
+                        ? match.fixture.status.elapsed + "'"
+                        : match.fixture.status.short
+                    }}
+                  </span>
+                </template>
+              </div>
+              <div class="team away">
+                <span class="team-name">{{ match.teams.away.name }}</span>
+                <img
+                  :src="match.teams.away.logo"
+                  :alt="match.teams.away.name"
+                  class="team-logo"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!loading && displayedMatches.length === 0" class="state-box">
+            <span class="empty-icon">📅</span>
+            <span>No matches found for today in this competition.</span>
+            <span class="empty-sub">Try the <strong>All</strong> tab or refresh later.</span>
+          </div>
+        </div>
+
+        <!-- Expand / collapse -->
+        <div v-if="!loading && !error && matches.length > 4" class="show-more-wrap">
+          <button class="show-more-btn" @click="showAll = !showAll">
+            {{ showAll ? '\u25b2 Show Less' : '\u25bc Show All ' + matches.length + ' Matches' }}
+          </button>
+        </div>
+      </div>
+    </transition>
   </section>
 </template>
 
@@ -103,6 +110,7 @@ export default {
       error: false,
       errorMsg: '',
       showAll: false,
+      minimized: false,
       refreshInterval: null
     }
   },
@@ -234,6 +242,27 @@ export default {
 }
 .refresh-badge:hover:not(:disabled) { background: rgba(255, 215, 0, 0.1); }
 .refresh-badge:disabled { opacity: 0.5; cursor: default; }
+.minimize-btn {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: none;
+  padding: 5px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.minimize-btn:hover { background: rgba(255,255,255,0.07); color: var(--white); }
+.collapse-enter-active, .collapse-leave-active {
+  transition: opacity 0.3s, max-height 0.4s ease;
+  overflow: hidden;
+  max-height: 9999px;
+}
+.collapse-enter-from, .collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
 
 /* Scores grid */
 .scores-grid {

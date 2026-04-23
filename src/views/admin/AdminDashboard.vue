@@ -29,42 +29,92 @@
     <main class="main-panel">
       <header class="main-header">
         <h1 class="section-title">{{ currentSection.label }}</h1>
-        <span class="header-date">{{ todayDate }}</span>
+        <div class="header-right">
+          <span class="header-date">{{ todayDate }}</span>
+          <!-- Notification bell -->
+          <div class="notif-bell-wrap" v-click-outside="closeNotif">
+            <button class="notif-bell" @click="toggleNotif" title="Status check notifications">
+              &#128276;
+              <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+            </button>
+            <div v-if="showNotifDropdown" class="notif-dropdown">
+              <div class="notif-header">
+                <span class="notif-title">Status Checks</span>
+                <button v-if="notifications.some(n => !n.is_read)" class="notif-read-all" @click="markAllRead">Mark all read</button>
+              </div>
+              <div v-if="notifications.length === 0" class="notif-empty">No notifications yet</div>
+              <div
+                v-for="n in notifications"
+                :key="n.id"
+                :class="['notif-item', { unread: !n.is_read }]"
+                @click="onNotifClick(n)"
+              >
+                <div class="notif-user">{{ n.username || n.phone }}</div>
+                <div class="notif-detail">
+                  <span class="notif-plan" v-if="n.plan_type">{{ n.plan_type }}</span>
+                  <span :class="['notif-status', 'ns-' + (n.sub_status || 'none')]">{{ n.sub_status || 'none' }}</span>
+                </div>
+                <div class="notif-time">{{ formatNotifTime(n.created_at) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
       <div class="panel-body">
-        <FreeOdd2Editor   v-if="activeSection === 'free-odd2'" />
-        <FootballTipsEditor v-if="activeSection === 'football-tips'" />
-        <AlmaxPredictionsEditor v-if="activeSection === 'almax-predictions'" />
-        <RecentWinsEditor v-if="activeSection === 'recent-wins'" />
-        <PaymentsOverview v-if="activeSection === 'payments'" />
+        <FreeOdd2Editor      v-if="activeSection === 'free-odd2'" />
+        <FootballTipsEditor  v-if="activeSection === 'football-tips'" />
+        <RecentWinsEditor    v-if="activeSection === 'recent-wins'" />
+        <PaymentsOverview    v-if="activeSection === 'payments'" :focusSubscriptionId="focusSubId" @vue:unmounted="focusSubId = null" />
+        <TestimonialsEditor  v-if="activeSection === 'testimonials'" />
+        <UsersEditor         v-if="activeSection === 'users'" />
+        <SitePreview         v-if="activeSection === 'preview'" />
       </div>
     </main>
   </div>
 </template>
 
 <script>
-import FreeOdd2Editor   from '../../components/admin/FreeOdd2Editor.vue'
-import FootballTipsEditor from '../../components/admin/FootballTipsEditor.vue'
-import AlmaxPredictionsEditor from '../../components/admin/AlmaxPredictionsEditor.vue'
-import RecentWinsEditor from '../../components/admin/RecentWinsEditor.vue'
-import PaymentsOverview from '../../components/admin/PaymentsOverview.vue'
+import axios from 'axios'
+import FreeOdd2Editor     from '../../components/admin/FreeOdd2Editor.vue'
+import FootballTipsEditor  from '../../components/admin/FootballTipsEditor.vue'
+import RecentWinsEditor    from '../../components/admin/RecentWinsEditor.vue'
+import PaymentsOverview    from '../../components/admin/PaymentsOverview.vue'
+import TestimonialsEditor  from '../../components/admin/TestimonialsEditor.vue'
+import UsersEditor         from '../../components/admin/UsersEditor.vue'
+import SitePreview         from '../../components/admin/SitePreview.vue'
 
 export default {
   name: 'AdminDashboard',
-  components: { FreeOdd2Editor, FootballTipsEditor, AlmaxPredictionsEditor, RecentWinsEditor, PaymentsOverview },
+  components: { FreeOdd2Editor, FootballTipsEditor, RecentWinsEditor, PaymentsOverview, TestimonialsEditor, UsersEditor, SitePreview },
+  directives: {
+    'click-outside': {
+      mounted(el, binding) {
+        el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value() }
+        document.addEventListener('click', el._clickOutside)
+      },
+      unmounted(el) { document.removeEventListener('click', el._clickOutside) }
+    }
+  },
   data() {
     const d = new Date()
     return {
       activeSection: 'free-odd2',
       todayDate: d.toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' }),
       navItems: [
-        { id: 'free-odd2',          icon: '⚡', label: 'Free Odd 2' },
-        { id: 'football-tips',      icon: '⚽', label: 'Football Tips' },
-        { id: 'almax-predictions',  icon: '🎯', label: 'Almax Predictions' },
-        { id: 'recent-wins',        icon: '🏆', label: 'Recent Wins' },
-        { id: 'payments',           icon: '💳', label: 'Payments' }
-      ]
+        { id: 'free-odd2',     icon: '\u26a1', label: 'Free Daily Tip' },
+        { id: 'football-tips', icon: '\u26bd', label: 'Almax Predictions' },
+        { id: 'recent-wins',   icon: '\ud83c\udfc6', label: 'Recent Wins' },
+        { id: 'payments',      icon: '\ud83d\udcb3', label: 'Payments' },
+        { id: 'users',         icon: '\ud83d\udc65', label: 'Members' },
+        { id: 'testimonials',  icon: '\ud83d\udcac', label: 'Testimonials' },
+        { id: 'preview',       icon: '\ud83d\udc41', label: 'Site Preview' }
+      ],
+      notifications: [],
+      unreadCount: 0,
+      showNotifDropdown: false,
+      notifPollInterval: null,
+      focusSubId: null
     }
   },
   computed: {
@@ -72,10 +122,75 @@ export default {
       return this.navItems.find(n => n.id === this.activeSection) || {}
     }
   },
+  async mounted() {
+    await this.fetchNotifCount()
+    this.notifPollInterval = setInterval(this.fetchNotifCount, 30000)
+  },
+  beforeUnmount() {
+    if (this.notifPollInterval) clearInterval(this.notifPollInterval)
+  },
   methods: {
     logout() {
-      localStorage.removeItem('adminAuth')
+      localStorage.removeItem('adminToken')
       this.$router.push('/admin/login')
+    },
+    async fetchNotifCount() {
+      try {
+        const token = localStorage.getItem('adminToken')
+        if (!token) return
+        const { data } = await axios.get('/api/notifications/unread-count', {
+          headers: { Authorization: 'Bearer ' + token }
+        })
+        this.unreadCount = data.count || 0
+      } catch { /* silent */ }
+    },
+    async fetchNotifications() {
+      try {
+        const token = localStorage.getItem('adminToken')
+        if (!token) return
+        const { data } = await axios.get('/api/notifications', {
+          headers: { Authorization: 'Bearer ' + token }
+        })
+        this.notifications = data || []
+      } catch { /* silent */ }
+    },
+    async toggleNotif() {
+      this.showNotifDropdown = !this.showNotifDropdown
+      if (this.showNotifDropdown) await this.fetchNotifications()
+    },
+    closeNotif() { this.showNotifDropdown = false },
+    async onNotifClick(notif) {
+      this.showNotifDropdown = false
+      try {
+        const token = localStorage.getItem('adminToken')
+        await axios.patch('/api/notifications/' + notif.id + '/read', {}, {
+          headers: { Authorization: 'Bearer ' + token }
+        })
+        notif.is_read = true
+        this.unreadCount = Math.max(0, this.unreadCount - 1)
+      } catch { /* silent */ }
+      this.focusSubId = notif.subscription_id || null
+      this.activeSection = 'payments'
+    },
+    async markAllRead() {
+      try {
+        const token = localStorage.getItem('adminToken')
+        await axios.patch('/api/notifications/read-all', {}, {
+          headers: { Authorization: 'Bearer ' + token }
+        })
+        this.notifications.forEach(n => { n.is_read = true })
+        this.unreadCount = 0
+      } catch { /* silent */ }
+    },
+    formatNotifTime(ts) {
+      if (!ts) return ''
+      const d = new Date(ts)
+      const now = new Date()
+      const diff = Math.floor((now - d) / 60000)
+      if (diff < 1) return 'just now'
+      if (diff < 60) return diff + 'm ago'
+      if (diff < 1440) return Math.floor(diff / 60) + 'h ago'
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
     }
   }
 }
@@ -85,16 +200,16 @@ export default {
 .dashboard {
   display: flex;
   min-height: 100vh;
-  background: #0a0a0a;
+  background: var(--dark);
   font-family: 'Segoe UI', system-ui, sans-serif;
-  color: #fff;
+  color: var(--white);
 }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 .sidebar {
   width: 240px;
   flex-shrink: 0;
-  background: #111;
+  background: var(--dark-2);
   border-right: 1px solid rgba(255,215,0,0.12);
   display: flex;
   flex-direction: column;
@@ -111,12 +226,12 @@ export default {
   font-weight: 900;
   letter-spacing: 2px;
 }
-.logo-text { color: #fff; }
+.logo-text { color: var(--white); }
 .gold { color: #FFD700; }
 
 .sidebar-role {
   font-size: 11px;
-  color: #555;
+  color: var(--text-muted);
   letter-spacing: 1.5px;
   text-transform: uppercase;
   padding: 0 8px;
@@ -138,14 +253,14 @@ export default {
   border-radius: 10px;
   border: none;
   background: transparent;
-  color: #888;
+  color: var(--text-muted);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   text-align: left;
   transition: background 0.2s, color 0.2s;
 }
-.nav-item:hover { background: rgba(255,215,0,0.06); color: #ccc; }
+.nav-item:hover { background: rgba(255,215,0,0.06); color: var(--white); }
 .nav-item.active {
   background: rgba(255,215,0,0.12);
   color: #FFD700;
@@ -184,16 +299,16 @@ export default {
   justify-content: space-between;
   padding: 24px 32px;
   border-bottom: 1px solid rgba(255,215,0,0.08);
-  background: #0f0f0f;
+  background: var(--dark-3);
 }
 .section-title {
   font-size: 22px;
   font-weight: 800;
-  color: #fff;
+  color: var(--white);
 }
 .header-date {
   font-size: 13px;
-  color: #555;
+  color: var(--text-muted);
 }
 
 .panel-body {

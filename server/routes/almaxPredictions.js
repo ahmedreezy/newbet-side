@@ -1,59 +1,86 @@
-const express = require('express')
-const router  = express.Router()
-const db      = require('../db')
+const express  = require('express')
+const router   = express.Router()
+const { pool } = require('../db')
+const auth     = require('../middleware/authMiddleware')
 
-// GET all predictions ordered by createdAt ASC
-router.get('/', (req, res) => {
-  const data = db.read()
-  const preds = [...(data.almax_predictions || [])].sort((a, b) => a.createdAt - b.createdAt)
-  res.json(preds)
+function rowToPred(row) {
+  return {
+    id:          row.id,
+    home:        row.home,
+    away:        row.away,
+    competition: row.competition,
+    kickoff:     row.kickoff,
+    tip:         row.tip,
+    odds:        row.odds,
+    result:      row.result,
+    createdAt:   row.created_at ? new Date(row.created_at).getTime() : null
+  }
+}
+
+// GET all predictions (public)
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM almax_predictions ORDER BY created_at ASC')
+    res.json(rows.map(rowToPred))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
-// POST a new prediction
-router.post('/', (req, res) => {
+// POST new prediction (admin)
+router.post('/', auth, async (req, res) => {
   const { home, away, competition, kickoff, tip, odds, result } = req.body
   if (!home || !away || !competition || !kickoff || !tip) {
     return res.status(400).json({ error: 'home, away, competition, kickoff, tip are required' })
   }
-  const data = db.read()
-  if (!Array.isArray(data.almax_predictions)) data.almax_predictions = []
-  const id = Date.now()
-  const prediction = {
-    id,
-    home, away, competition, kickoff,
-    tip,
-    odds: odds ?? '',
-    result: result ?? 'pending',
-    createdAt: id
+  try {
+    const { rows: [pred] } = await pool.query(`
+      INSERT INTO almax_predictions (home, away, competition, kickoff, tip, odds, result)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING *
+    `, [home, away, competition, kickoff, tip, odds || '', result || 'pending'])
+    res.status(201).json(rowToPred(pred))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
   }
-  data.almax_predictions.push(prediction)
-  db.write(data)
-  res.status(201).json(prediction)
 })
 
-// PATCH a prediction result
-router.patch('/:id', (req, res) => {
-  const id   = Number(req.params.id)
-  const data = db.read()
-  if (!Array.isArray(data.almax_predictions)) return res.status(404).json({ error: 'Not found' })
-  const pred = data.almax_predictions.find(p => p.id === id)
-  if (!pred) return res.status(404).json({ error: 'Prediction not found' })
+// PATCH update a prediction (admin)
+router.patch('/:id', auth, async (req, res) => {
+  const id = parseInt(req.params.id, 10)
   const allowed = ['home', 'away', 'competition', 'kickoff', 'tip', 'odds', 'result']
-  allowed.forEach(k => { if (req.body[k] !== undefined) pred[k] = req.body[k] })
-  db.write(data)
-  res.json(pred)
+  const sets = []; const vals = []; let i = 1
+  for (const k of allowed) {
+    if (req.body[k] !== undefined) { sets.push(`${k} = $${i++}`); vals.push(req.body[k]) }
+  }
+  if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' })
+  vals.push(id)
+  try {
+    const { rows } = await pool.query(
+      `UPDATE almax_predictions SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      vals
+    )
+    if (rows.length === 0) return res.status(404).json({ error: 'Prediction not found' })
+    res.json(rowToPred(rows[0]))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
-// DELETE a prediction by id
-router.delete('/:id', (req, res) => {
-  const id   = Number(req.params.id)
-  const data = db.read()
-  if (!Array.isArray(data.almax_predictions)) return res.status(404).json({ error: 'Not found' })
-  const idx  = data.almax_predictions.findIndex(p => p.id === id)
-  if (idx === -1) return res.status(404).json({ error: 'Prediction not found' })
-  data.almax_predictions.splice(idx, 1)
-  db.write(data)
-  res.json({ success: true })
+// DELETE a prediction (admin)
+router.delete('/:id', auth, async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  try {
+    const { rowCount } = await pool.query('DELETE FROM almax_predictions WHERE id = $1', [id])
+    if (rowCount === 0) return res.status(404).json({ error: 'Prediction not found' })
+    res.json({ success: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
 module.exports = router

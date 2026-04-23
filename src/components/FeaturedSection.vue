@@ -50,7 +50,7 @@
     <div class="container picks-container">
       <div class="section-header sh-row">
         <div class="sh-left">
-          <h2>TODAY'S <span class="gold-text">FOOTBALL PICKS</span></h2>
+          <h2>TODAY'S <span class="gold-text">ALMAX PICKS</span></h2>
           <p class="section-sub">Hand-picked by our analysts — free daily tips</p>
         </div>
         <div class="today-date-badge">{{ todayFormatted }}</div>
@@ -58,15 +58,20 @@
 
       <div class="picks-grid">
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
-          <!-- jersey cartoon top strip -->
-          <div class="pick-kit-bar">
-            <svg class="kit-svg" viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">
-              <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
-                    :fill="pick.kitColor" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-              <text x="40" y="36" text-anchor="middle" font-size="16" font-weight="900" fill="rgba(255,255,255,0.85)">
-                {{ pick.kitNumber }}
-              </text>
-            </svg>
+          <!-- jersey cartoon top strip / image -->
+          <div class="pick-kit-bar" :class="{ 'has-image': pick.imageUrl }">
+            <template v-if="pick.imageUrl">
+              <img :src="pick.imageUrl" :alt="pick.home + ' vs ' + pick.away" class="pick-card-img" />
+            </template>
+            <template v-else>
+              <svg class="kit-svg" viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
+                      :fill="pick.kitColor" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                <text x="40" y="36" text-anchor="middle" font-size="16" font-weight="900" fill="rgba(255,255,255,0.85)">
+                  {{ pick.kitNumber }}
+                </text>
+              </svg>
+            </template>
             <div class="pick-comp-badge">{{ pick.competition }}</div>
           </div>
           <!-- content -->
@@ -128,44 +133,237 @@
       </div>
     </div>
 
-    <!-- ── MOBILE MONEY MODAL ── -->
+    <!-- ── VIP PAYMENT MODAL (multi-step) ── -->
     <transition name="modal-fade">
       <div
         v-if="showVipMenu"
         class="mm-overlay"
-        @click.self="showVipMenu = false"
+        @click.self="closeVip"
         role="dialog"
         aria-modal="true"
         aria-label="Join VIP"
       >
         <div class="mm-sheet">
-          <button class="mm-close" @click="showVipMenu = false" aria-label="Close">✕</button>
-          <div class="mm-icon">👑</div>
-          <h3 class="mm-title">JOIN VIP <span class="gold-text">TIPS</span></h3>
-          <p class="mm-sub">Unlock all expert tips, odds &amp; daily predictions</p>
+          <button class="mm-close" @click="closeVip" aria-label="Close">✕</button>
 
-          <div class="mm-plans">
-            <div
-              v-for="plan in vipPlans"
-              :key="plan.id"
-              class="mm-plan"
-              :class="{ 'plan-popular': plan.popular }"
-            >
-              <span v-if="plan.popular" class="plan-badge">BEST VALUE</span>
-              <div class="plan-name">{{ plan.name }}</div>
-              <div class="plan-price">{{ plan.price }}</div>
-              <div class="plan-period">{{ plan.period }}</div>
+          <!-- ── STEP 1: Plan Selection ── -->
+          <template v-if="vipStep === 1">
+            <div class="mm-icon">👑</div>
+            <h3 class="mm-title">JOIN <span class="gold-text">VIP TIPS</span></h3>
+            <p class="mm-sub">Unlock all expert tips, odds &amp; daily predictions</p>
+            <div class="mm-plans">
+              <div
+                class="mm-plan selectable"
+                :class="{ selected: selectedPlan === 'daily' }"
+                @click="selectedPlan = 'daily'"
+              >
+                <div class="plan-name">Daily</div>
+                <div class="plan-price">{{ (vipCfg.daily_price || 5000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
+                <div class="plan-period">1 day access</div>
+              </div>
+              <div
+                class="mm-plan selectable"
+                :class="{ selected: selectedPlan === 'weekly', 'plan-popular': true }"
+                @click="selectedPlan = 'weekly'"
+              >
+                <span class="plan-badge">BEST VALUE</span>
+                <div class="plan-name">Weekly</div>
+                <div class="plan-price">{{ (vipCfg.weekly_price || 20000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
+                <div class="plan-period">6 days access</div>
+              </div>
             </div>
-          </div>
+            <button class="mm-next-btn" @click="vipStep = 2">Continue →</button>
+            <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
+          </template>
 
-          <button class="mm-pay-btn" disabled>
-            📱 Pay via Mobile Money
-            <span class="mm-coming">Coming Soon</span>
-          </button>
-          <p class="mm-note">
-            Mobile money integration launching soon.<br/>
-            Join our WhatsApp group in the meantime.
-          </p>
+          <!-- ── STEP 2: Registration / Lookup ── -->
+          <template v-else-if="vipStep === 2">
+            <div class="mm-icon">👤</div>
+            <h3 class="mm-title">YOUR <span class="gold-text">ACCOUNT</span></h3>
+            <div class="reg-tabs">
+              <button :class="['reg-tab', { active: !isReturning }]" @click="isReturning = false">New User</button>
+              <button :class="['reg-tab', { active: isReturning }]" @click="isReturning = true">Returning</button>
+            </div>
+
+            <form v-if="!isReturning" @submit.prevent="registerUser" class="reg-form">
+              <div class="field">
+                <label>Full Name</label>
+                <input v-model="regForm.username" type="text" placeholder="Your full name" required />
+              </div>
+              <div class="field">
+                <label>Date of Birth</label>
+                <input v-model="regForm.dob" type="date" required />
+              </div>
+              <div class="field">
+                <label>Email</label>
+                <input v-model="regForm.email" type="email" placeholder="your@email.com" required />
+              </div>
+              <div class="field">
+                <label>Phone Number</label>
+                <input v-model="regForm.phone" type="tel" placeholder="07XXXXXXXX" required />
+              </div>
+              <p v-if="regError" class="reg-error">{{ regError }}</p>
+              <button type="submit" class="mm-next-btn" :disabled="regLoading">
+                {{ regLoading ? 'Please wait…' : 'Continue →' }}
+              </button>
+            </form>
+
+            <form v-else @submit.prevent="lookupUser" class="reg-form">
+              <div class="field">
+                <label>Your Phone Number</label>
+                <input v-model="lookupPhone" type="tel" placeholder="07XXXXXXXX" required />
+              </div>
+              <p v-if="regError" class="reg-error">{{ regError }}</p>
+              <button type="submit" class="mm-next-btn" :disabled="regLoading">
+                {{ regLoading ? 'Looking up…' : 'Find Account →' }}
+              </button>
+            </form>
+
+            <p class="mm-back" @click="vipStep = 1">← Back</p>
+          </template>
+
+          <!-- ── STEP 3: Payment Method ── -->
+          <template v-else-if="vipStep === 3">
+            <div class="mm-icon">📱</div>
+            <h3 class="mm-title">PAY VIA <span class="gold-text">MOBILE MONEY</span></h3>
+            <p class="mm-sub">Choose your provider and follow the instructions</p>
+
+            <div class="provider-cards">
+              <div
+                class="provider-card"
+                :class="{ selected: selectedProvider === 'mtn' }"
+                @click="selectedProvider = 'mtn'"
+              >
+                <div class="provider-logo mtn-logo">MTN</div>
+                <div class="provider-name">MTN MoMo</div>
+                <div class="provider-num">{{ vipCfg.mtn_number }}</div>
+              </div>
+              <div
+                class="provider-card"
+                :class="{ selected: selectedProvider === 'airtel' }"
+                @click="selectedProvider = 'airtel'"
+              >
+                <div class="provider-logo airtel-logo">Airtel</div>
+                <div class="provider-name">Airtel Money</div>
+                <div class="provider-num">{{ vipCfg.airtel_number }}</div>
+              </div>
+            </div>
+
+            <div v-if="selectedProvider" class="payment-instructions">
+              <div class="instr-title">📋 Payment Instructions</div>
+              <ol class="instr-list">
+                <li>Dial <strong>*165#</strong> (MTN) or <strong>*185#</strong> (Airtel) on your phone</li>
+                <li>Select "Send Money" then "To Phone Number"</li>
+                <li>Enter number: <strong>{{ selectedProvider === 'mtn' ? vipCfg.mtn_number : vipCfg.airtel_number }}</strong></li>
+                <li>Enter amount: <strong>{{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</strong></li>
+                <li>Enter your PIN to confirm</li>
+              </ol>
+              <div class="pay-amount-badge">
+                Amount: {{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}
+                <span class="pay-plan-tag">{{ selectedPlan }} plan</span>
+              </div>
+            </div>
+
+            <!-- Proof of payment upload -->
+            <div class="proof-upload-block">
+              <div class="proof-upload-label">📸 Upload Proof of Payment <span class="proof-optional">(optional but speeds up verification)</span></div>
+              <label class="proof-file-btn">
+                {{ proofFile ? proofFile.name : 'Choose screenshot (JPG or PNG)' }}
+                <input type="file" accept="image/jpeg,image/png" @change="handleProofFile" class="proof-file-input" />
+              </label>
+              <img v-if="proofPreview" :src="proofPreview" class="proof-preview-thumb" alt="Proof preview" />
+            </div>
+
+            <p v-if="payError" class="reg-error">{{ payError }}</p>
+            <button class="mm-next-btn" :disabled="!selectedProvider || payLoading" @click="submitPayment">
+              {{ payLoading ? 'Submitting…' : '✅ I\'ve Paid — Confirm' }}
+            </button>
+            <p class="mm-back" @click="vipStep = 2">← Back</p>
+          </template>
+
+          <!-- ── STEP 4: Submitted ── -->
+          <template v-else-if="vipStep === 4">
+            <div class="mm-icon">⏳</div>
+            <h3 class="mm-title">PAYMENT <span class="gold-text">SUBMITTED</span></h3>
+            <p class="mm-sub">Your payment is being verified by our team.<br/>You'll get your betslip once confirmed.</p>
+            <div class="pending-box">
+              <div class="pending-row"><span>Plan</span><strong>{{ selectedPlan === 'daily' ? 'Daily' : 'Weekly' }}</strong></div>
+              <div class="pending-row"><span>Amount</span><strong>{{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</strong></div>
+              <div class="pending-row"><span>Provider</span><strong>{{ selectedProvider ? selectedProvider.toUpperCase() : '' }}</strong></div>
+              <div class="pending-row"><span>Status</span><span class="status-pending">Pending</span></div>
+            </div>
+
+            <!-- Late proof upload (shown only if no proof was uploaded in step 3) -->
+            <div v-if="!proofFile && submittedSubId" class="proof-upload-block late-proof">
+              <div class="proof-upload-label">📎 Still want to speed up verification? Upload your payment screenshot:</div>
+              <label class="proof-file-btn">
+                {{ lateProofFile ? lateProofFile.name : 'Choose screenshot (JPG or PNG)' }}
+                <input type="file" accept="image/jpeg,image/png" @change="handleLateProofFile" class="proof-file-input" />
+              </label>
+              <img v-if="lateProofPreview" :src="lateProofPreview" class="proof-preview-thumb" alt="Proof preview" />
+              <button v-if="lateProofFile" class="proof-upload-send-btn" @click="uploadLateProof" :disabled="lateProofLoading">
+                {{ lateProofLoading ? 'Uploading…' : '📤 Send Proof' }}
+              </button>
+              <p v-if="lateProofError" class="reg-error">{{ lateProofError }}</p>
+              <p v-if="lateProofSent" class="proof-sent-msg">✓ Proof sent!</p>
+            </div>
+
+            <button class="mm-next-btn" @click="vipStep = 'status'">Check My Status</button>
+            <p class="mm-note">Our admin will manually confirm your payment. Usually within 30 minutes.</p>
+          </template>
+
+          <!-- ── STATUS CHECK ── -->
+          <template v-else-if="vipStep === 'status'">
+            <div class="mm-icon">🔍</div>
+            <h3 class="mm-title">CHECK <span class="gold-text">STATUS</span></h3>
+            <form @submit.prevent="checkStatus" class="reg-form">
+              <div class="field">
+                <label>Your Phone Number</label>
+                <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required />
+              </div>
+              <p v-if="statusError" class="reg-error">{{ statusError }}</p>
+              <button type="submit" class="mm-next-btn" :disabled="statusLoading">
+                {{ statusLoading ? 'Checking…' : '🔍 Check Status' }}
+              </button>
+            </form>
+
+            <div v-if="activeSub" class="betslip-box">
+              <div class="betslip-badge">✅ ACTIVE VIP</div>
+              <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
+
+              <div v-if="activeSub.betslipLink" class="betslip-section">
+                <div class="betslip-label">🔗 Betslip Link</div>
+                <a :href="activeSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">
+                  {{ activeSub.betslipLink }}
+                </a>
+              </div>
+              <div v-if="activeSub.betslipCode" class="betslip-section">
+                <div class="betslip-label">🎫 Betslip Code</div>
+                <div class="betslip-code-row">
+                  <code class="betslip-code">{{ activeSub.betslipCode }}</code>
+                  <button class="copy-btn" @click="copyCode(activeSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+                </div>
+              </div>
+
+              <a
+                v-if="vipCfg.whatsapp_link"
+                :href="vipCfg.whatsapp_link"
+                target="_blank"
+                rel="noopener"
+                class="whatsapp-btn"
+              >
+                💬 Join WhatsApp Community
+              </a>
+            </div>
+            <div v-else-if="statusChecked && !activeSub" class="pending-box">
+              <p style="text-align:center; color: var(--text-muted); font-size:14px;">
+                {{ pendingStatusMsg || 'No active subscription found.' }}
+              </p>
+            </div>
+
+            <p class="mm-back" @click="vipStep = 1">← Back to Plans</p>
+          </template>
+
         </div>
       </div>
     </transition>
@@ -181,25 +379,25 @@ const STATIC_PICKS = [
     id: 1, home: 'Man City', away: 'Arsenal',
     competition: 'Premier League', kickoff: '20:00',
     kitColor: '#6CABDD', kitNumber: '10', accent: '#6CABDD',
-    winProb: 78
+    winProb: 78, imageUrl: ''
   },
   {
     id: 2, home: 'Real Madrid', away: 'Barcelona',
     competition: 'La Liga', kickoff: '21:00',
     kitColor: '#FEBE10', kitNumber: '9', accent: '#FEBE10',
-    winProb: 82
+    winProb: 82, imageUrl: ''
   },
   {
     id: 3, home: 'Bayern Munich', away: 'Dortmund',
     competition: 'Bundesliga', kickoff: '18:30',
     kitColor: '#DC052D', kitNumber: '8', accent: '#DC052D',
-    winProb: 71
+    winProb: 71, imageUrl: ''
   },
   {
     id: 4, home: 'PSG', away: 'Lyon',
     competition: 'Ligue 1', kickoff: '21:05',
     kitColor: '#004170', kitNumber: '7', accent: '#004170',
-    winProb: 85
+    winProb: 85, imageUrl: ''
   }
 ]
 
@@ -211,12 +409,40 @@ export default {
     const days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
     return {
       todayFormatted: `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`,
+      todayPicks: [...STATIC_PICKS],
+      // VIP modal
       showVipMenu: false,
-      vipPlans: [
-        { id: 1, name: 'Weekly',  price: '5,000 UGX',  period: '7 days',  popular: false },
-        { id: 2, name: 'Monthly', price: '15,000 UGX', period: '30 days', popular: true  },
-        { id: 3, name: 'Season',  price: '40,000 UGX', period: '90 days', popular: false },
-      ],
+      vipStep: 1,
+      vipCfg: { daily_price: 5000, weekly_price: 20000, currency: 'UGX', mtn_number: '', airtel_number: '', whatsapp_link: '' },
+      selectedPlan: 'weekly',
+      selectedProvider: '',
+      // Registration
+      isReturning: false,
+      regForm: { username: '', dob: '', email: '', phone: '' },
+      regUser: null,
+      regError: '',
+      regLoading: false,
+      lookupPhone: '',
+      // Payment
+      payError: '',
+      payLoading: false,
+      proofFile: null,
+      proofPreview: '',
+      submittedSubId: null,
+      lateProofFile: null,
+      lateProofPreview: '',
+      lateProofLoading: false,
+      lateProofError: '',
+      lateProofSent: false,
+      // Status check
+      statusPhone: '',
+      statusError: '',
+      statusLoading: false,
+      statusChecked: false,
+      activeSub: null,
+      pendingStatusMsg: '',
+      copied: false,
+      // Decorations
       decos: [
         { id:1,  char:'⚽', style:{ top:'8%',  left:'3%',  fontSize:'78px', animationDelay:'0s',   opacity:0.44 } },
         { id:2,  char:'🥅', style:{ top:'15%', right:'4%', fontSize:'88px', animationDelay:'1.2s', opacity:0.40 } },
@@ -226,12 +452,18 @@ export default {
         { id:6,  char:'🎽', style:{ top:'82%', left:'8%',  fontSize:'72px', animationDelay:'3s',   opacity:0.38 } },
         { id:7,  char:'🎯', style:{ top:'42%', right:'2%', fontSize:'62px', animationDelay:'2.5s', opacity:0.36 } },
         { id:8,  char:'⚽', style:{ top:'90%', left:'50%', fontSize:'82px', animationDelay:'1s',   opacity:0.40 } },
-      ],
-      todayPicks: [...STATIC_PICKS]
+      ]
+    }
+  },
+  computed: {
+    selectedPlanAmount() {
+      return this.selectedPlan === 'daily'
+        ? (this.vipCfg.daily_price || 5000)
+        : (this.vipCfg.weekly_price || 20000)
     }
   },
   async mounted() {
-    await this.fetchTips()
+    await Promise.all([this.fetchTips(), this.fetchVipConfig()])
     this._pollInterval = setInterval(this.fetchTips, 30000)
     this._onVisible = () => { if (!document.hidden) this.fetchTips() }
     document.addEventListener('visibilitychange', this._onVisible)
@@ -245,12 +477,141 @@ export default {
       try {
         const { data } = await axios.get('/api/football-tips')
         this.todayPicks = (data && data.length > 0) ? data : [...STATIC_PICKS]
-      } catch {
-        // Server unavailable — static picks remain
-      }
+      } catch { /* Server unavailable — static picks remain */ }
+    },
+    async fetchVipConfig() {
+      try {
+        const { data } = await axios.get('/api/config/vip-config')
+        if (data) this.vipCfg = { ...this.vipCfg, ...data }
+      } catch { /* use defaults */ }
     },
     openVipMenu() {
+      this.vipStep = 1
       this.showVipMenu = true
+    },
+    closeVip() {
+      this.showVipMenu = false
+    },
+    async registerUser() {
+      this.regLoading = true
+      this.regError = ''
+      try {
+        const { data } = await axios.post('/api/users', this.regForm)
+        this.regUser = data
+        this.vipStep = 3
+      } catch (err) {
+        if (err.response && err.response.status === 409) {
+          // Already registered — use existing
+          this.regUser = err.response.data.user
+          this.vipStep = 3
+        } else {
+          this.regError = err.response?.data?.error || 'Registration failed. Please try again.'
+        }
+      } finally {
+        this.regLoading = false
+      }
+    },
+    async lookupUser() {
+      this.regLoading = true
+      this.regError = ''
+      try {
+        const { data } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.lookupPhone))
+        this.regUser = data
+        this.vipStep = 3
+      } catch {
+        this.regError = 'Phone number not found. Please register as a new user.'
+      } finally {
+        this.regLoading = false
+      }
+    },
+    handleProofFile(e) {
+      const file = e.target.files[0]
+      if (!file) return
+      this.proofFile = file
+      this.proofPreview = URL.createObjectURL(file)
+    },
+    handleLateProofFile(e) {
+      const file = e.target.files[0]
+      if (!file) return
+      this.lateProofFile = file
+      this.lateProofPreview = URL.createObjectURL(file)
+    },
+    async submitPayment() {
+      if (!this.selectedProvider) return
+      this.payLoading = true
+      this.payError = ''
+      try {
+        const phone = this.regUser?.phone || ''
+        const formData = new FormData()
+        formData.append('userId', this.regUser.id)
+        formData.append('planType', this.selectedPlan)
+        formData.append('paymentMethod', this.selectedProvider)
+        formData.append('phone', phone)
+        if (this.proofFile) formData.append('proof', this.proofFile)
+        const { data } = await axios.post('/api/subscriptions', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        this.submittedSubId = data.subscription?.id || data.id || null
+        this.vipStep = 4
+      } catch (err) {
+        this.payError = err.response?.data?.error || 'Submission failed. Please try again.'
+      } finally {
+        this.payLoading = false
+      }
+    },
+    async uploadLateProof() {
+      if (!this.lateProofFile || !this.submittedSubId) return
+      this.lateProofLoading = true
+      this.lateProofError = ''
+      try {
+        const fd = new FormData()
+        fd.append('proof', this.lateProofFile)
+        await axios.post('/api/subscriptions/' + this.submittedSubId + '/proof', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        this.lateProofSent = true
+        this.lateProofFile = null
+      } catch (err) {
+        this.lateProofError = err.response?.data?.error || 'Upload failed. Please try again.'
+      } finally {
+        this.lateProofLoading = false
+      }
+    },
+    async checkStatus() {
+      this.statusLoading = true
+      this.statusError = ''
+      this.statusChecked = false
+      this.activeSub = null
+      this.pendingStatusMsg = ''
+      try {
+        const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
+        const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
+        const active = subs.find(s => s.status === 'active')
+        const pending = subs.find(s => s.status === 'pending')
+        if (active) {
+          this.activeSub = active
+        } else if (pending) {
+          this.pendingStatusMsg = '⏳ Payment pending — our team is verifying. Check back soon.'
+        } else {
+          this.pendingStatusMsg = 'No active subscription found for this number.'
+        }
+        this.statusChecked = true
+      } catch {
+        this.statusError = 'Phone number not found. Please register first.'
+      } finally {
+        this.statusLoading = false
+      }
+    },
+    formatExpiry(ts) {
+      if (!ts) return 'N/A'
+      return new Date(ts).toLocaleString()
+    },
+    async copyCode(code) {
+      try {
+        await navigator.clipboard.writeText(code)
+        this.copied = true
+        setTimeout(() => { this.copied = false }, 2000)
+      } catch { /* clipboard denied */ }
     }
   }
 }
@@ -385,13 +746,28 @@ export default {
 
 /* Kit top strip */
 .pick-kit-bar {
-  background: linear-gradient(135deg, #111 40%, #1e1e1e 100%);
+  background: var(--kit-bar-bg);
   padding: 16px 16px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   position: relative;
+}
+.pick-kit-bar.has-image {
+  padding: 0;
+  background: var(--dark);
+}
+.pick-card-img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+}
+.pick-kit-bar.has-image .pick-comp-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
 }
 .kit-svg {
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
@@ -496,7 +872,7 @@ export default {
   color: var(--text-muted);
 }
 
-/* ── Mobile Money modal ── */
+/* ── VIP Modal new styles ── */
 .mm-overlay {
   position: fixed;
   inset: 0;
@@ -512,109 +888,163 @@ export default {
   border: 1px solid var(--gold-dark);
   border-bottom: none;
   border-radius: 24px 24px 0 0;
-  padding: 32px 28px 48px;
+  padding: 32px 24px 48px;
   width: 100%;
   max-width: 500px;
   position: relative;
   text-align: center;
   animation: sheetUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: 92vh;
+  overflow-y: auto;
 }
-@keyframes sheetUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .mm-close {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 20px;
-  cursor: pointer;
-  line-height: 1;
-  transition: color 0.2s;
+  position: absolute; top: 16px; right: 20px;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 20px; cursor: pointer; line-height: 1; transition: color 0.2s;
 }
 .mm-close:hover { color: var(--gold); }
 .mm-icon  { font-size: 46px; margin-bottom: 10px; }
 .mm-title { font-size: 22px; font-weight: 900; color: var(--white); margin-bottom: 6px; }
-.mm-sub   { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
-.mm-plans {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
+.mm-sub   { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+.mm-plans { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
 .mm-plan {
   background: var(--dark-3);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 2px solid rgba(255,255,255,0.07);
   border-radius: 14px;
   padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  position: relative;
-  min-width: 110px;
-  transition: border-color 0.2s;
+  display: flex; flex-direction: column; gap: 4px;
+  position: relative; min-width: 120px;
+  cursor: pointer; transition: border-color 0.2s, background 0.2s;
 }
-.mm-plan.plan-popular {
-  border-color: var(--gold-dark);
-  background: rgba(255,215,0,0.04);
-}
+.mm-plan.selectable:hover { border-color: rgba(255,215,0,0.4); }
+.mm-plan.selected { border-color: var(--gold); background: rgba(255,215,0,0.06); }
+.mm-plan.plan-popular { border-color: var(--gold-dark); }
 .plan-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--gold);
-  color: var(--dark);
-  font-size: 8px;
-  font-weight: 800;
-  padding: 3px 10px;
-  border-radius: 10px;
-  white-space: nowrap;
-  letter-spacing: 0.5px;
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  background: var(--gold); color: var(--dark);
+  font-size: 8px; font-weight: 800; padding: 3px 10px; border-radius: 10px;
+  white-space: nowrap; letter-spacing: 0.5px;
 }
-.plan-name   { font-size: 11px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-.plan-price  { font-size: 18px; font-weight: 900; color: var(--gold); margin-top: 4px; }
-.plan-period { font-size: 11px; color: var(--text-muted); }
-.mm-pay-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 15px;
+.plan-name  { font-size: 11px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.plan-price { font-size: 18px; font-weight: 900; color: var(--gold); margin-top: 4px; }
+.plan-period{ font-size: 11px; color: var(--text-muted); }
+
+.mm-next-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 14px;
   background: linear-gradient(135deg, var(--gold-dark), var(--gold));
-  color: var(--dark);
-  border: none;
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: not-allowed;
-  opacity: 0.55;
-  margin-bottom: 14px;
+  color: var(--dark); border: none; border-radius: 14px;
+  font-size: 15px; font-weight: 800; cursor: pointer;
+  margin-bottom: 12px; transition: opacity 0.2s;
 }
-.mm-coming {
-  font-size: 10px;
-  background: rgba(0,0,0,0.25);
-  color: var(--dark);
-  padding: 2px 9px;
-  border-radius: 10px;
-  font-weight: 700;
+.mm-next-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mm-next-btn:not(:disabled):hover { opacity: 0.88; }
+.mm-check-link { font-size: 12px; color: var(--gold); cursor: pointer; text-decoration: underline; margin-top: 4px; }
+.mm-back { font-size: 12px; color: var(--text-muted); cursor: pointer; margin-top: 8px; }
+.mm-back:hover { color: var(--gold); }
+.mm-note { font-size: 11px; color: rgba(170,170,170,0.5); line-height: 1.6; margin-top: 10px; }
+
+/* Registration form */
+.reg-tabs { display: flex; gap: 0; margin-bottom: 18px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,215,0,0.2); }
+.reg-tab { flex: 1; padding: 10px; background: transparent; border: none; color: var(--text-muted); font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.2s, color 0.2s; }
+.reg-tab.active { background: rgba(255,215,0,0.12); color: var(--gold); }
+.reg-form { text-align: left; margin-bottom: 8px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+.field input {
+  background: var(--input-bg, #1a1a1a); border: 1px solid rgba(255,215,0,0.2);
+  border-radius: 9px; padding: 11px 14px; color: var(--white);
+  font-size: 14px; outline: none; transition: border-color 0.2s; width: 100%;
 }
-.mm-note { font-size: 11px; color: rgba(170,170,170,0.5); line-height: 1.6; }
+.field input:focus { border-color: rgba(255,215,0,0.5); }
+.field input::placeholder { color: var(--text-muted); opacity: 0.6; }
+.reg-error { color: #ff5252; font-size: 12px; margin-bottom: 10px; text-align: center; }
+
+/* Provider cards */
+.provider-cards { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; }
+.provider-card {
+  flex: 1; max-width: 150px; padding: 16px 12px;
+  background: var(--dark-3); border: 2px solid rgba(255,255,255,0.07);
+  border-radius: 14px; cursor: pointer; text-align: center;
+  transition: border-color 0.2s; min-width: 100px;
+}
+.provider-card.selected { border-color: var(--gold); background: rgba(255,215,0,0.05); }
+.provider-logo { font-size: 15px; font-weight: 900; padding: 8px 14px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
+.mtn-logo   { background: #FFCC00; color: #000; }
+.airtel-logo{ background: #ED1C24; color: #fff; }
+.provider-name { font-size: 12px; font-weight: 700; color: var(--white); margin-bottom: 4px; }
+.provider-num  { font-size: 11px; color: var(--gold); font-weight: 600; }
+
+/* Payment instructions */
+.payment-instructions {
+  background: rgba(255,215,0,0.04); border: 1px solid rgba(255,215,0,0.15);
+  border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 16px;
+}
+.instr-title { font-size: 12px; font-weight: 700; color: var(--gold); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+.instr-list { padding-left: 18px; color: var(--text-muted); font-size: 13px; line-height: 1.8; }
+.instr-list strong { color: var(--white); }
+.pay-amount-badge {
+  margin-top: 12px; background: rgba(255,215,0,0.1);
+  border-radius: 8px; padding: 8px 12px; font-size: 14px;
+  font-weight: 800; color: var(--gold); display: flex;
+  align-items: center; justify-content: space-between;
+}
+.pay-plan-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--gold); color: var(--dark); padding: 2px 8px; border-radius: 8px; }
+
+/* Pending box */
+/* Proof upload */
+.proof-upload-block { margin: 14px 0; text-align: left; }
+.proof-upload-label { font-size: 12px; color: #aaa; margin-bottom: 8px; }
+.proof-optional { color: #666; }
+.proof-file-btn {
+  display: block; cursor: pointer; background: rgba(255,255,255,0.04);
+  border: 1px dashed rgba(255,215,0,0.3); border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; color: #888; text-align: center; transition: border-color 0.2s;
+}
+.proof-file-btn:hover { border-color: rgba(255,215,0,0.6); color: #FFD700; }
+.proof-file-input { display: none; }
+.proof-preview-thumb { display: block; width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin-top: 10px; border: 1px solid rgba(255,215,0,0.25); }
+.late-proof { background: rgba(255,215,0,0.03); border: 1px solid rgba(255,215,0,0.1); border-radius: 10px; padding: 14px; }
+.proof-upload-send-btn { margin-top: 10px; width: 100%; padding: 10px; background: rgba(255,215,0,0.15); border: 1px solid rgba(255,215,0,0.3); color: #FFD700; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.proof-upload-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.proof-sent-msg { color: #4caf50; font-size: 13px; margin-top: 8px; }
+
+.pending-box {
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 16px; margin-bottom: 16px; text-align: left;
+}
+.pending-row { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.pending-row:last-child { border-bottom: none; }
+.pending-row span { color: var(--text-muted); }
+.pending-row strong { color: var(--white); }
+.status-pending { background: rgba(255,165,0,0.15); color: #FFA500; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 10px; }
+
+/* Betslip access */
+.betslip-box { background: rgba(0,200,83,0.05); border: 1px solid rgba(0,200,83,0.2); border-radius: 14px; padding: 18px; margin-bottom: 16px; text-align: left; }
+.betslip-badge { background: rgba(0,200,83,0.15); color: #00c853; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px; }
+.betslip-exp { font-size: 11px; color: var(--text-muted); margin-bottom: 14px; }
+.betslip-section { margin-bottom: 14px; }
+.betslip-label { font-size: 11px; font-weight: 700; color: #888; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+.betslip-link { color: var(--gold); font-size: 12px; word-break: break-all; display: block; }
+.betslip-code-row { display: flex; align-items: center; gap: 10px; }
+.betslip-code { background: var(--dark-3); padding: 8px 14px; border-radius: 8px; font-size: 16px; color: var(--gold); font-family: monospace; letter-spacing: 2px; flex: 1; }
+.copy-btn { background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3); color: var(--gold); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.copy-btn:hover { background: rgba(255,215,0,0.2); }
+.whatsapp-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 13px; background: #25D366; color: #fff;
+  border: none; border-radius: 12px; font-size: 14px; font-weight: 800;
+  cursor: pointer; text-decoration: none; margin-top: 12px;
+  transition: opacity 0.2s;
+}
+.whatsapp-btn:hover { opacity: 0.88; color: #fff; }
+
 .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.25s; }
 .modal-fade-enter-from, .modal-fade-leave-to       { opacity: 0; }
 
 /* Goalpost accent */
-.goalpost-accent {
-  display: flex;
-  justify-content: center;
-  opacity: 0.5;
-  margin-top: 8px;
-}
+.goalpost-accent { display: flex; justify-content: center; opacity: 0.5; margin-top: 8px; }
 
 /* Responsive */
 @media (max-width: 640px) {

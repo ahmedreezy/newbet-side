@@ -1,42 +1,21 @@
-const fs   = require('fs')
-const path = require('path')
+require('dotenv').config()
 
-const DB_FILE = path.join(__dirname, 'data.json')
+let pool
 
-const DEFAULT_DB = {
-  football_tips: [],
-  almax_predictions: [],
-  recent_wins: [],
-  free_odd2: {
-    id: 1,
-    teamA: 'Team A',
-    teamB: 'Team B',
-    pick: 'Over 2.5 Goals',
-    odd: '2.00',
-    time: '20:45',
-    competition: 'Premier League'
-  }
+if (process.env.DATABASE_URL) {
+  // Real PostgreSQL
+  const { Pool } = require('pg')
+  pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  pool.on('error', (err) => { console.error('PostgreSQL pool error:', err) })
+} else {
+  // No DATABASE_URL — use pg-mem (in-memory database for development)
+  const { newDb } = require('pg-mem')
+  const db = newDb()
+  const { Pool } = db.adapters.createPg(require('pg'))
+  pool = new Pool()
+  console.log('⚠  DATABASE_URL not set — using in-memory database (data resets on restart)')
 }
 
-function read() {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(DEFAULT_DB, null, 2))
-    return JSON.parse(JSON.stringify(DEFAULT_DB))
-  }
-  try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
-  } catch {
-    return JSON.parse(JSON.stringify(DEFAULT_DB))
-  }
-}
-
-function write(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2))
-}
-
-// Migrate: if old SQLite data.db exists, we simply start fresh with JSON.
-// (SQLite file has no value on native-build-broken environments.)
-
-module.exports = { read, write }
+module.exports = { pool }
 
 

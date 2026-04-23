@@ -1,15 +1,23 @@
 <template>
   <div id="home-page">
-    <div :class="{ 'main-blurred': showModal }">
+    <div :class="{ 'main-blurred': showModal || showVideoAd }">
       <HeroSection />
       <FeaturedSection />
-      <LiveScores />
       <RecentWinnings />
+      <LiveScores />
+      <TestimonialsSection />
       <FooterSection />
     </div>
 
-    <IntroModal v-if="showModal" @close="closeModal" />
-    <Odd2FloatingWidget v-if="showWidget" @open="reopenModal" />
+    <VideoAdModal
+      v-if="showVideoAd"
+      @done="onAdDone"
+    />
+    <IntroModal
+      v-if="showModal"
+      @close="closeModal"
+    />
+    <Odd2FloatingWidget @open="openWidget" />
     <WhatsAppButton />
   </div>
 </template>
@@ -23,6 +31,8 @@ import RecentWinnings from '../components/RecentWinnings.vue'
 import FooterSection from '../components/FooterSection.vue'
 import WhatsAppButton from '../components/WhatsAppButton.vue'
 import Odd2FloatingWidget from '../components/Odd2FloatingWidget.vue'
+import VideoAdModal from '../components/VideoAdModal.vue'
+import TestimonialsSection from '../components/TestimonialsSection.vue'
 
 export default {
   name: 'HomePage',
@@ -34,22 +44,26 @@ export default {
     RecentWinnings,
     FooterSection,
     WhatsAppButton,
-    Odd2FloatingWidget
+    Odd2FloatingWidget,
+    VideoAdModal,
+    TestimonialsSection
   },
   data() {
     return {
-      showModal: true,
-      showWidget: false
+      showVideoAd: false,
+      showModal: false
     }
   },
   methods: {
+    openWidget() {
+      this.showVideoAd = true
+    },
+    onAdDone() {
+      this.showVideoAd = false
+      this.showModal = true
+    },
     closeModal() {
       this.showModal = false
-      this.showWidget = true
-    },
-    reopenModal() {
-      this.showWidget = false
-      this.showModal = true
     }
   }
 }

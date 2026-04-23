@@ -12,7 +12,7 @@ const routes = [
     path: '/admin/login',
     component: AdminLogin,
     beforeEnter: (to, from, next) => {
-      if (localStorage.getItem('adminAuth') === '1') {
+      if (localStorage.getItem('adminToken')) {
         next('/admin/dashboard')
       } else {
         next()
@@ -23,7 +23,7 @@ const routes = [
     path: '/admin/dashboard',
     component: AdminDashboard,
     beforeEnter: (to, from, next) => {
-      if (localStorage.getItem('adminAuth') === '1') {
+      if (localStorage.getItem('adminToken')) {
         next()
       } else {
         next('/admin/login')

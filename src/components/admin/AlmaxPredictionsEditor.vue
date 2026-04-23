@@ -86,7 +86,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import adminApi from '../../utils/adminApi'
 
 export default {
   name: 'AlmaxPredictionsEditor',
@@ -110,7 +110,7 @@ export default {
     async loadPredictions() {
       this.loading = true
       try {
-        const { data } = await axios.get('/api/almax-predictions')
+        const { data } = await adminApi.get('/api/almax-predictions')
         this.predictions = data
       } catch {
         // server unavailable
@@ -123,7 +123,7 @@ export default {
       this.saved = false
       this.saveError = ''
       try {
-        const { data } = await axios.post('/api/almax-predictions', { ...this.newPred })
+        const { data } = await adminApi.post('/api/almax-predictions', { ...this.newPred })
         this.predictions.push(data)
         this.saved = true
         this.newPred = { home: '', away: '', competition: '', kickoff: '', tip: '', odds: '', result: 'pending' }
@@ -136,7 +136,7 @@ export default {
     },
     async updateResult(id, result) {
       try {
-        const { data } = await axios.patch('/api/almax-predictions/' + id, { result })
+        const { data } = await adminApi.patch('/api/almax-predictions/' + id, { result })
         const idx = this.predictions.findIndex(p => p.id === id)
         if (idx !== -1) this.predictions.splice(idx, 1, data)
       } catch {
@@ -146,7 +146,7 @@ export default {
     async deletePrediction(id) {
       if (!confirm('Delete this prediction?')) return
       try {
-        await axios.delete('/api/almax-predictions/' + id)
+        await adminApi.delete('/api/almax-predictions/' + id)
         this.predictions = this.predictions.filter(p => p.id !== id)
       } catch {
         alert('Delete failed. Make sure the server is running.')
@@ -199,3 +199,4 @@ export default {
 
 @media (max-width: 600px) { .fields-row { grid-template-columns: 1fr; } }
 </style>
+

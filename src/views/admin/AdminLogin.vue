@@ -46,6 +46,8 @@
 </template>
 
 <script>
+import axios from 'axios'
+
 export default {
   name: 'AdminLogin',
   data() {
@@ -57,22 +59,21 @@ export default {
     }
   },
   methods: {
-    handleLogin() {
+    async handleLogin() {
       this.error = ''
       this.loading = true
-
-      const correctUser = process.env.VUE_APP_ADMIN_USER
-      const correctPass = process.env.VUE_APP_ADMIN_PASS
-
-      setTimeout(() => {
-        if (this.username === correctUser && this.password === correctPass) {
-          localStorage.setItem('adminAuth', '1')
-          this.$router.push('/admin/dashboard')
-        } else {
-          this.error = 'Invalid username or password.'
-          this.loading = false
-        }
-      }, 400)
+      try {
+        const { data } = await axios.post('/api/auth/login', {
+          username: this.username,
+          password: this.password
+        })
+        localStorage.setItem('adminToken', data.token)
+        this.$router.push('/admin/dashboard')
+      } catch (err) {
+        this.error = err.response?.data?.error || 'Invalid username or password.'
+      } finally {
+        this.loading = false
+      }
     }
   }
 }
@@ -81,7 +82,7 @@ export default {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: radial-gradient(ellipse at center, #1a1200 0%, #0a0a0a 70%);
+  background: var(--hero-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -90,7 +91,7 @@ export default {
 }
 
 .login-card {
-  background: #111;
+  background: var(--dark-card);
   border: 1px solid rgba(255, 215, 0, 0.2);
   border-radius: 18px;
   padding: 48px 40px;
@@ -111,7 +112,7 @@ export default {
 .logo-text {
   font-size: 22px;
   font-weight: 900;
-  color: #fff;
+  color: var(--white);
   letter-spacing: 2px;
 }
 .gold { color: #FFD700; }
@@ -119,12 +120,12 @@ export default {
 .login-title {
   font-size: 24px;
   font-weight: 800;
-  color: #fff;
+  color: var(--white);
   margin-bottom: 6px;
 }
 .login-sub {
   font-size: 14px;
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 32px;
 }
 
@@ -138,17 +139,17 @@ export default {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
-  color: #aaa;
+  color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 8px;
 }
 .field input {
   width: 100%;
-  background: #1a1a1a;
+  background: var(--input-bg);
   border: 1px solid rgba(255,215,0,0.15);
   border-radius: 10px;
   padding: 13px 16px;
-  color: #fff;
+  color: var(--white);
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s;
@@ -156,7 +157,7 @@ export default {
 .field input:focus {
   border-color: rgba(255, 215, 0, 0.5);
 }
-.field input::placeholder { color: #555; }
+.field input::placeholder { color: var(--text-muted); opacity: 0.6; }
 
 .error-msg {
   color: #ff5252;
@@ -189,7 +190,7 @@ export default {
   display: inline-block;
   margin-top: 24px;
   font-size: 13px;
-  color: #666;
+  color: var(--text-muted);
   text-decoration: none;
   transition: color 0.2s;
 }

@@ -3,14 +3,14 @@
     class="odd2-float"
     role="button"
     tabindex="0"
-    aria-label="View today's free Odd 2 of the day"
+    aria-label="View today's free daily tip"
     @click="$emit('open')"
     @keydown.enter="$emit('open')"
     @keydown.space.prevent="$emit('open')"
   >
     <div class="odd2-icon-wrap" aria-hidden="true">⚡</div>
     <div class="odd2-text">
-      <span class="odd2-label">ODD 2 TODAY</span>
+      <span class="odd2-label">FREE DAILY TIP</span>
       <span class="odd2-value">{{ liveOdd }}</span>
     </div>
     <span class="odd2-arrow" aria-hidden="true">›</span>
@@ -50,10 +50,10 @@ export default {
 <style scoped>
 .odd2-float {
   position: fixed;
-  top: 22px;
+  top: 54px;
   left: 22px;
   z-index: 900;
-  background: linear-gradient(135deg, #1e1e1e 0%, #2a1e00 100%);
+  background: var(--widget-bg);
   border: 1px solid var(--gold-dark);
   border-radius: 50px;
   padding: 9px 18px 9px 9px;

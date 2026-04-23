@@ -3,12 +3,16 @@
     <div class="modal">
       <button class="close-btn" @click="$emit('close')" aria-label="Close">✕</button>
       <div class="modal-badge">⚡ TODAY'S SPECIAL</div>
-      <h2 class="modal-title">FREE ODD 2 OF THE DAY</h2>
+      <h2 class="modal-title">FREE DAILY TIP</h2>
 
       <div v-if="fetchLoading" class="odd-card loading-card">
         <div class="loading-dots"><span></span><span></span><span></span></div>
       </div>
       <div v-else class="odd-card">
+        <!-- Image if available -->
+        <div v-if="odd.imageUrl" class="tip-image-wrap">
+          <img :src="odd.imageUrl" alt="Free daily tip" class="tip-image" />
+        </div>
         <div class="match">
           <span class="team">{{ odd.teamA }}</span>
           <span class="vs">VS</span>
@@ -44,7 +48,8 @@ import axios from 'axios'
 const DEFAULT = {
   teamA: 'Team A', teamB: 'Team B',
   pick: 'Over 2.5 Goals', odd: '2.00',
-  time: '20:45', competition: 'Premier League'
+  time: '20:45', competition: 'Premier League',
+  imageUrl: ''
 }
 
 export default {
@@ -82,7 +87,7 @@ export default {
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 1100;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
@@ -105,6 +110,8 @@ export default {
   position: relative;
   box-shadow: 0 0 60px rgba(255, 215, 0, 0.15);
   animation: slideUp 0.3s ease;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 @keyframes slideUp {
   from { transform: translateY(30px); opacity: 0; }
@@ -142,6 +149,17 @@ export default {
   letter-spacing: 1px;
   margin-bottom: 24px;
   text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+.tip-image-wrap {
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.tip-image {
+  width: 100%;
+  display: block;
+  max-height: 220px;
+  object-fit: cover;
 }
 .odd-card {
   background: var(--dark-3);

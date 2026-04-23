@@ -14,9 +14,13 @@
     <div class="hero-content">
       <div class="hero-badge">🏆 ALMAX FOOTBALL PREDICTIONS</div>
       <h1 class="hero-title">
-        WIN <span class="gold-text">BIG</span> WITH EXPERT<br />
-        <span class="gold-text">ALMAX</span> PREDICTIONS
+        <span class="gold-text">ALMAX</span> FOOTBALL<br />
+        PREDICTIONS
       </h1>
+
+      <!-- Calligraphic slogan -->
+      <p class="hero-slogan">✨ We shall make it in life ✨</p>
+
       <p class="hero-sub">
         Daily free tips, live scores &amp; VIP winnings — powered by Almax.
       </p>
@@ -109,7 +113,7 @@ export default {
 <style scoped>
 .hero {
   min-height: 100vh;
-  background: radial-gradient(ellipse at center, #1a1200 0%, #0a0a0a 70%);
+  background: var(--hero-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -158,6 +162,15 @@ export default {
   color: var(--white);
   margin-bottom: 22px;
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+  animation: titleShake 4s ease-in-out infinite;
+  display: inline-block;
+}
+@keyframes titleShake {
+  0%, 85%, 100% { transform: translate(0, 0) rotate(0deg); }
+  88%           { transform: translate(-3px, 1px) rotate(-0.4deg); }
+  91%           { transform: translate(3px, -1px) rotate(0.4deg); }
+  94%           { transform: translate(-2px, 1px) rotate(-0.3deg); }
+  97%           { transform: translate(2px, -1px) rotate(0.3deg); }
 }
 .gold-text {
   color: var(--gold);
@@ -226,7 +239,7 @@ export default {
   padding: 0 20px;
 }
 .float-card {
-  background: rgba(30, 30, 30, 0.92);
+  background: var(--float-card-bg);
   border: 1px solid rgba(255, 215, 0, 0.25);
   border-radius: 10px;
   padding: 10px 22px;
@@ -252,4 +265,15 @@ export default {
   .float-cards { bottom: 24px; }
   .hero-stats   { gap: 14px; }
 }
-</style>
+
+/* ── Calligraphic slogan ── */
+.hero-slogan {
+  font-family: 'Dancing Script', 'Great Vibes', cursive;
+  font-size: clamp(22px, 4.5vw, 32px);
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 0 18px rgba(255, 215, 0, 0.45);
+  margin-bottom: 32px;
+  letter-spacing: 1px;
+  line-height: 1.3;
+}</style>

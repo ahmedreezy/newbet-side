@@ -13,7 +13,7 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename:    (_req, file, cb) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')
-    cb(null, `${Date.now()}_${safe}`)
+    cb(null, `testimonial_${Date.now()}_${safe}`)
   }
 })
 const fileFilter = (_req, file, cb) => {
@@ -21,46 +21,37 @@ const fileFilter = (_req, file, cb) => {
 }
 const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } })
 
-function rowToWin(row) {
+function rowToT(row) {
   return {
     id:         row.id,
-    betType:    row.bet_type,
-    date:       row.date,
-    staked:     row.staked,
-    returned:   row.returned,
-    odds:       row.odds,
+    caption:    row.caption,
     memberName: row.member_name,
     imageUrl:   row.image_url,
     createdAt:  row.created_at ? new Date(row.created_at).getTime() : null
   }
 }
 
-// GET all wins (public)
+// GET all testimonials (public)
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM recent_wins ORDER BY created_at DESC')
-    res.json(rows.map(rowToWin))
+    const { rows } = await pool.query('SELECT * FROM testimonials ORDER BY created_at DESC')
+    res.json(rows.map(rowToT))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
 
-// POST a new win (admin)
+// POST add a testimonial (admin)
 router.post('/', auth, upload.single('image'), async (req, res) => {
-  const { betType, date, staked, returned, odds, memberName } = req.body
-  if (!betType || !date || !staked || !returned || !odds) {
-    if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {}
-    return res.status(400).json({ error: 'betType, date, staked, returned, odds are required' })
-  }
   try {
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : ''
-    const { rows: [win] } = await pool.query(`
-      INSERT INTO recent_wins (bet_type, date, staked, returned, odds, member_name, image_url)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+    const { rows: [t] } = await pool.query(`
+      INSERT INTO testimonials (caption, member_name, image_url)
+      VALUES ($1,$2,$3)
       RETURNING *
-    `, [betType, date, staked, returned, odds, memberName || '', imageUrl])
-    res.status(201).json(rowToWin(win))
+    `, [req.body.caption || '', req.body.memberName || '', imageUrl])
+    res.status(201).json(rowToT(t))
   } catch (err) {
     if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {}
     console.error(err)
@@ -68,31 +59,28 @@ router.post('/', auth, upload.single('image'), async (req, res) => {
   }
 })
 
-// PUT update a win (admin)
+// PUT update a testimonial (admin)
 router.put('/:id', auth, upload.single('image'), async (req, res) => {
   const id = parseInt(req.params.id, 10)
   try {
-    const { rows } = await pool.query('SELECT * FROM recent_wins WHERE id = $1', [id])
-    if (rows.length === 0) return res.status(404).json({ error: 'Win not found' })
+    const { rows } = await pool.query('SELECT * FROM testimonials WHERE id = $1', [id])
+    if (rows.length === 0) return res.status(404).json({ error: 'Testimonial not found' })
 
-    const win = rows[0]
     const sets = []; const vals = []; let i = 1
-    const fields = { bet_type: 'betType', date: 'date', staked: 'staked', returned: 'returned', odds: 'odds', member_name: 'memberName' }
-    for (const [col, key] of Object.entries(fields)) {
-      if (req.body[key] !== undefined) { sets.push(`${col} = $${i++}`); vals.push(req.body[key]) }
-    }
+    if (req.body.caption    !== undefined) { sets.push(`caption = $${i++}`);     vals.push(req.body.caption) }
+    if (req.body.memberName !== undefined) { sets.push(`member_name = $${i++}`); vals.push(req.body.memberName) }
     if (req.file) {
-      if (win.image_url) try { fs.unlinkSync(path.join(UPLOADS_DIR, path.basename(win.image_url))) } catch {}
+      if (rows[0].image_url) try { fs.unlinkSync(path.join(UPLOADS_DIR, path.basename(rows[0].image_url))) } catch {}
       sets.push(`image_url = $${i++}`)
       vals.push(`/uploads/${req.file.filename}`)
     }
     if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' })
     vals.push(id)
     const { rows: [updated] } = await pool.query(
-      `UPDATE recent_wins SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      `UPDATE testimonials SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
       vals
     )
-    res.json(rowToWin(updated))
+    res.json(rowToT(updated))
   } catch (err) {
     if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {}
     console.error(err)
@@ -100,14 +88,14 @@ router.put('/:id', auth, upload.single('image'), async (req, res) => {
   }
 })
 
-// DELETE a win (admin)
+// DELETE a testimonial (admin)
 router.delete('/:id', auth, async (req, res) => {
   const id = parseInt(req.params.id, 10)
   try {
-    const { rows } = await pool.query('SELECT image_url FROM recent_wins WHERE id = $1', [id])
-    if (rows.length === 0) return res.status(404).json({ error: 'Win not found' })
+    const { rows } = await pool.query('SELECT image_url FROM testimonials WHERE id = $1', [id])
+    if (rows.length === 0) return res.status(404).json({ error: 'Testimonial not found' })
     if (rows[0].image_url) try { fs.unlinkSync(path.join(UPLOADS_DIR, path.basename(rows[0].image_url))) } catch {}
-    await pool.query('DELETE FROM recent_wins WHERE id = $1', [id])
+    await pool.query('DELETE FROM testimonials WHERE id = $1', [id])
     res.json({ success: true })
   } catch (err) {
     console.error(err)

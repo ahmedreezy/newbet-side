@@ -1,45 +1,7 @@
 {
-  "football_tips": [
-    {
-      "id": 1776454444934,
-      "home": "NJKKK",
-      "away": "JJ3JJ3J",
-      "competition": "33JJ33J",
-      "kickoff": "N33N3",
-      "winProb": 75,
-      "kitColor": "#00ff91",
-      "kitNumber": "10",
-      "prediction": "JJ3J3J",
-      "accent": "#00ff91",
-      "createdAt": 1776454444934
-    },
-    {
-      "id": 1776585520067,
-      "home": " w wmwmw",
-      "away": ",,w,,w,w,,",
-      "competition": " wwmwmwm",
-      "kickoff": ",w,w,,w,",
-      "winProb": 75,
-      "kitColor": "#FFD700",
-      "kitNumber": "10",
-      "prediction": "wmwmwwm",
-      "accent": "#FFD700",
-      "createdAt": 1776585520067
-    }
-  ],
+  "football_tips": [],
   "almax_predictions": [],
   "recent_wins": [
-    {
-      "id": 1776585615524,
-      "betType": "mwmwwmwm",
-      "date": "wmwmwmwm",
-      "staked": ",,d,",
-      "returned": " ww  w ",
-      "odds": "32",
-      "memberName": "",
-      "imageUrl": "",
-      "createdAt": 1776585615524
-    },
     {
       "id": 1776586980064,
       "betType": "jjjj",
@@ -54,11 +16,88 @@
   ],
   "free_odd2": {
     "id": 1,
-    "teamA": "ARSENAL",
-    "teamB": "MAN CITY",
-    "pick": "Over 2.5 Goals",
-    "odd": "2.00",
-    "time": "20:45",
-    "competition": "Premier League"
-  }
+    "teamA": "Arsenal",
+    "teamB": "ManCity",
+    "pick": "over 2.5",
+    "odd": "2",
+    "time": "8:30",
+    "competition": "Premier league",
+    "imageUrl": "/uploads/freetip_1776684168785_Betslip_Flat_Design_-_Free_Psd__by_Luis_M_Ruiz.jpg"
+  },
+  "testimonials": [],
+  "vip_config": {
+    "ad_video_url": "https://www.youtube.com/watch?v=g4tpuu-Up90&list=RDg4tpuu-Up90&start_radio=1&pp=ygUPbWljaGFlbCBqYWNrc29uoAcB"
+  },
+  "users": [
+    {
+      "id": 1776685700666,
+      "username": "ahmed",
+      "dob": "2001-05-10",
+      "email": "ahmedkasolexd@gmail.com",
+      "phone": "0742026823",
+      "createdAt": 1776685700666
+    },
+    {
+      "id": 1776937618605,
+      "username": "Ahmed Kasole",
+      "dob": "2003-09-09",
+      "email": "ahmedkasolexd@gmail.com",
+      "phone": "0781036300",
+      "createdAt": 1776937618605
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": 1776685718882,
+      "userId": 1776685700666,
+      "planType": "daily",
+      "paymentMethod": "mtn",
+      "phone": "0742026823",
+      "amount": 5000,
+      "status": "pending",
+      "betslipLink": "www.betpawa.com",
+      "betslipCode": "12345",
+      "startedAt": null,
+      "expiresAt": null,
+      "createdAt": 1776685718882
+    },
+    {
+      "id": 1776937628862,
+      "userId": 1776937618605,
+      "planType": "weekly",
+      "paymentMethod": "mtn",
+      "phone": "0781036300",
+      "amount": 20000,
+      "status": "pending",
+      "betslipLink": "hhhh",
+      "betslipCode": "jjjjjj",
+      "startedAt": null,
+      "expiresAt": null,
+      "createdAt": 1776937628862
+    }
+  ],
+  "payments": [
+    {
+      "id": 1776685718883,
+      "subscriptionId": 1776685718882,
+      "userId": 1776685700666,
+      "amount": 5000,
+      "planType": "daily",
+      "paymentMethod": "mtn",
+      "phone": "0742026823",
+      "status": "pending",
+      "createdAt": 1776685718882
+    },
+    {
+      "id": 1776937628863,
+      "subscriptionId": 1776937628862,
+      "userId": 1776937618605,
+      "amount": 20000,
+      "planType": "weekly",
+      "paymentMethod": "mtn",
+      "phone": "0781036300",
+      "status": "pending",
+      "createdAt": 1776937628862
+    }
+  ]
 }

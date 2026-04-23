@@ -10,19 +10,80 @@
       <div v-if="wins.length === 0" class="empty-state">No wins added yet. Add one below.</div>
       <div v-else class="wins-grid">
         <div v-for="win in wins" :key="win.id" class="win-card">
-          <div v-if="win.imageUrl" class="win-img-wrap">
-            <img :src="win.imageUrl" :alt="win.betType + ' winning slip'" class="win-img" />
+
+          <!-- ── Inline edit overlay ── -->
+          <div v-if="editingId === win.id" class="edit-overlay">
+            <div class="edit-img-row">
+              <img
+                :src="editPreview || win.imageUrl || ''"
+                v-if="editPreview || win.imageUrl"
+                class="edit-preview-img"
+                alt="Preview"
+              />
+              <div v-else class="no-img-placeholder">🎫 No image</div>
+              <label class="replace-photo-btn" :for="'edit-img-' + win.id">🔄 Replace Image</label>
+              <input :id="'edit-img-' + win.id" type="file" accept="image/*" class="hidden-file" @change="onEditFile" />
+            </div>
+            <div class="edit-fields">
+              <div class="edit-fields-row">
+                <div class="edit-field">
+                  <label>Bet Type</label>
+                  <input v-model="editForm.betType" type="text" placeholder="e.g. Accumulator" />
+                </div>
+                <div class="edit-field">
+                  <label>Date</label>
+                  <input v-model="editForm.date" type="text" placeholder="e.g. Apr 16, 2026" />
+                </div>
+              </div>
+              <div class="edit-fields-row">
+                <div class="edit-field">
+                  <label>Amount Staked</label>
+                  <input v-model="editForm.staked" type="text" placeholder="e.g. 10,000 UGX" />
+                </div>
+                <div class="edit-field">
+                  <label>Amount Won</label>
+                  <input v-model="editForm.returned" type="text" placeholder="e.g. 210,000 UGX" />
+                </div>
+              </div>
+              <div class="edit-fields-row">
+                <div class="edit-field">
+                  <label>Total Odds</label>
+                  <input v-model="editForm.odds" type="text" placeholder="e.g. 21.00" />
+                </div>
+                <div class="edit-field">
+                  <label>Member Name</label>
+                  <input v-model="editForm.memberName" type="text" placeholder="e.g. K. Moses" />
+                </div>
+              </div>
+            </div>
+            <div class="edit-actions">
+              <button class="save-btn" @click="saveEdit(win.id)" :disabled="editSaving">{{ editSaving ? 'Saving…' : '✓ Save' }}</button>
+              <button class="cancel-edit-btn" @click="cancelEdit">Cancel</button>
+              <span v-if="editError" class="error-msg">⚠ {{ editError }}</span>
+            </div>
           </div>
-          <div v-else class="win-img-placeholder">
-            <span>🎫</span><span>No image</span>
-          </div>
-          <div class="win-body">
-            <div class="win-type">{{ win.betType }}</div>
-            <div class="win-amounts">{{ win.staked }} → {{ win.returned }}</div>
-            <div class="win-odds">Odds: {{ win.odds }}</div>
-            <div class="win-date">{{ win.date }}</div>
-          </div>
-          <button class="delete-btn" @click="deleteWin(win.id)" title="Delete">🗑 Delete</button>
+
+          <!-- ── Normal card view ── -->
+          <template v-else>
+            <div v-if="win.imageUrl" class="win-img-wrap">
+              <img :src="win.imageUrl" :alt="win.betType + ' winning slip'" class="win-img" />
+            </div>
+            <div v-else class="win-img-placeholder">
+              <span>🎫</span><span>No image</span>
+            </div>
+            <div class="win-body">
+              <div class="win-type">{{ win.betType }}</div>
+              <div class="win-amounts">{{ win.staked }} → {{ win.returned }}</div>
+              <div class="win-odds">Odds: {{ win.odds }}</div>
+              <div class="win-date">{{ win.date }}</div>
+              <div v-if="win.memberName" class="win-member">👤 {{ win.memberName }}</div>
+            </div>
+            <div class="card-actions">
+              <button class="edit-btn" @click="startEdit(win)" title="Edit">&#9999; Edit</button>
+              <button class="delete-btn" @click="deleteWin(win.id)" title="Delete">🗑 Delete</button>
+            </div>
+          </template>
+
         </div>
       </div>
 
@@ -87,7 +148,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import adminApi from '../../utils/adminApi'
 
 export default {
   name: 'RecentWinsEditor',
@@ -100,7 +161,14 @@ export default {
       saveError: '',
       uploadProgress: 0,
       imageFile: null,
-      newWin: { betType: '', date: '', staked: '', returned: '', odds: '', memberName: '' }
+      newWin: { betType: '', date: '', staked: '', returned: '', odds: '', memberName: '' },
+      // Inline edit state
+      editingId: null,
+      editForm: { betType: '', date: '', staked: '', returned: '', odds: '', memberName: '' },
+      editFile: null,
+      editPreview: null,
+      editSaving: false,
+      editError: ''
     }
   },
   async mounted() {
@@ -110,7 +178,7 @@ export default {
     async loadWins() {
       this.loading = true
       try {
-        const { data } = await axios.get('/api/recent-wins')
+        const { data } = await adminApi.get('/api/recent-wins')
         this.wins = data
       } catch {
         // Server not reachable — show empty state
@@ -134,7 +202,7 @@ export default {
         Object.entries(this.newWin).forEach(([k, v]) => formData.append(k, v))
         if (this.imageFile) formData.append('image', this.imageFile)
 
-        const { data } = await axios.post('/api/recent-wins', formData, {
+        const { data } = await adminApi.post('/api/recent-wins', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (e) => {
             this.uploadProgress = e.total ? Math.round((e.loaded / e.total) * 100) : 0
@@ -156,10 +224,48 @@ export default {
     async deleteWin(id) {
       if (!confirm('Delete this winning slip?')) return
       try {
-        await axios.delete(`/api/recent-wins/${id}`)
+        await adminApi.delete(`/api/recent-wins/${id}`)
         this.wins = this.wins.filter(w => w.id !== id)
       } catch {
         alert('Delete failed. Is the local server running?')
+      }
+    },
+    startEdit(win) {
+      this.editingId = win.id
+      this.editForm = { betType: win.betType, date: win.date, staked: win.staked, returned: win.returned, odds: win.odds, memberName: win.memberName || '' }
+      this.editFile = null
+      this.editPreview = null
+      this.editError = ''
+    },
+    cancelEdit() {
+      this.editingId = null
+      this.editFile = null
+      this.editPreview = null
+      this.editError = ''
+    },
+    onEditFile(e) {
+      const file = e.target.files[0]
+      if (!file) return
+      this.editFile = file
+      this.editPreview = URL.createObjectURL(file)
+    },
+    async saveEdit(id) {
+      this.editSaving = true
+      this.editError = ''
+      try {
+        const fd = new FormData()
+        Object.entries(this.editForm).forEach(([k, v]) => fd.append(k, v))
+        if (this.editFile) fd.append('image', this.editFile)
+        const { data } = await adminApi.put(`/api/recent-wins/${id}`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        const idx = this.wins.findIndex(w => w.id === id)
+        if (idx !== -1) this.wins.splice(idx, 1, data)
+        this.cancelEdit()
+      } catch {
+        this.editError = 'Save failed. Is the server running?'
+      } finally {
+        this.editSaving = false
       }
     }
   }
@@ -184,7 +290,7 @@ export default {
 .delete-btn { width: 100%; padding: 10px; background: rgba(255,82,82,0.08); border: none; border-top: 1px solid rgba(255,82,82,0.12); color: #ff5252; font-size: 13px; cursor: pointer; transition: background 0.2s; }
 .delete-btn:hover { background: rgba(255,82,82,0.18); }
 
-.add-section { }
+.add-section { margin-top: 8px; }
 .add-title { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 16px; }
 .editor-form { background: #111; border: 1px solid rgba(255,215,0,0.1); border-radius: 14px; padding: 24px; }
 .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
@@ -206,5 +312,33 @@ export default {
 .saved-msg { color: #4caf50; font-size: 13px; font-weight: 600; }
 .error-msg { color: #ff5252; font-size: 13px; }
 
-@media (max-width: 600px) { .fields-row { grid-template-columns: 1fr; } }
+.win-member { font-size: 12px; color: #888; margin-top: 3px; }
+.card-actions { display: flex; border-top: 1px solid rgba(255,215,0,0.08); }
+.edit-btn, .delete-btn { flex: 1; padding: 10px; border: none; font-size: 13px; cursor: pointer; transition: background 0.2s; font-weight: 600; }
+.edit-btn { background: rgba(255,215,0,0.06); color: #FFD700; border-right: 1px solid rgba(255,215,0,0.08); }
+.edit-btn:hover { background: rgba(255,215,0,0.14); }
+.delete-btn { background: rgba(255,82,82,0.08); color: #ff5252; }
+.delete-btn:hover { background: rgba(255,82,82,0.18); }
+
+/* ── Inline Edit Overlay ── */
+.hidden-file { display: none; }
+.edit-overlay { padding: 14px; display: flex; flex-direction: column; gap: 10px; background: #1a1a1a; border-radius: 12px; }
+.edit-img-row { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.edit-preview-img { width: 100%; max-height: 130px; object-fit: cover; border-radius: 8px; }
+.no-img-placeholder { width: 100%; height: 80px; background: #111; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 13px; }
+.replace-photo-btn { font-size: 11px; font-weight: 700; color: #FFD700; cursor: pointer; background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.2); border-radius: 6px; padding: 5px 10px; user-select: none; transition: background 0.2s; }
+.replace-photo-btn:hover { background: rgba(255,215,0,0.16); }
+.edit-fields { display: flex; flex-direction: column; gap: 8px; }
+.edit-fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.edit-field { display: flex; flex-direction: column; gap: 4px; }
+.edit-field label { font-size: 10px; font-weight: 700; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+.edit-field input { background: #111; border: 1px solid rgba(255,215,0,0.15); border-radius: 7px; padding: 7px 10px; color: #fff; font-size: 12px; outline: none; transition: border-color 0.2s; }
+.edit-field input:focus { border-color: rgba(255,215,0,0.45); }
+.edit-field input::placeholder { color: #444; }
+.edit-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cancel-edit-btn { background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 7px; padding: 7px 14px; color: #aaa; font-size: 12px; cursor: pointer; transition: border-color 0.2s; }
+.cancel-edit-btn:hover { border-color: rgba(255,255,255,0.35); color: #fff; }
+
+@media (max-width: 600px) { .fields-row { grid-template-columns: 1fr; } .edit-fields-row { grid-template-columns: 1fr; } }
 </style>
+
