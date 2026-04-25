@@ -6,9 +6,26 @@ let isInMemory = false
 if (process.env.DATABASE_URL) {
   // Real PostgreSQL
   const { Pool } = require('pg')
+  const rawConnectionString = process.env.DATABASE_URL
+
+  // Avoid IPv6 localhost (::1) auth mismatches by forcing localhost URLs to IPv4.
+  let connectionString = rawConnectionString
+  try {
+    const parsedUrl = new URL(rawConnectionString)
+    if (parsedUrl.hostname === 'localhost') {
+      parsedUrl.hostname = '127.0.0.1'
+      connectionString = parsedUrl.toString()
+    }
+  } catch (_) {
+    // Keep original value if DATABASE_URL is not URL-parseable.
+  }
+
+  const sslMode = (process.env.PGSSLMODE || '').toLowerCase()
+  const sslEnabled = ['require', 'verify-ca', 'verify-full'].includes(sslMode)
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: false
+    connectionString,
+    ssl: sslEnabled ? { rejectUnauthorized: false } : false
   })
   pool.on('error', (err) => { console.error('PostgreSQL pool error:', err) })
 } else {
