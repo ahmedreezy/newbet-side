@@ -13,10 +13,11 @@
     <!-- Main content -->
     <div class="hero-content">
       <div class="hero-badge">🏆 ALMAX FOOTBALL PREDICTIONS</div>
-      <h1 class="hero-title">
-        <span class="gold-text">ALMAX</span> FOOTBALL<br />
-        PREDICTIONS
-      </h1>
+      <div class="glow-wrapper">
+        <figure class="glow-figure">
+          <div class="glow-layer" v-for="n in 10" :key="n">ALMAX FOOTBALL PREDICTIONS</div>
+        </figure>
+      </div>
 
       <!-- Calligraphic slogan -->
       <p class="hero-slogan">✨ We shall make it in life ✨</p>
@@ -155,27 +156,56 @@ export default {
   letter-spacing: 2px;
   margin-bottom: 28px;
 }
-.hero-title {
-  font-size: clamp(40px, 8vw, 80px);
-  font-weight: 900;
-  line-height: 1.1;
-  color: var(--white);
-  margin-bottom: 22px;
-  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
-  animation: titleShake 4s ease-in-out infinite;
-  display: inline-block;
+/* ── 3D Glow Title ── */
+.glow-wrapper {
+  perspective: 600px;
+  margin-bottom: 28px;
+  width: 100%;
 }
-@keyframes titleShake {
-  0%, 85%, 100% { transform: translate(0, 0) rotate(0deg); }
-  88%           { transform: translate(-3px, 1px) rotate(-0.4deg); }
-  91%           { transform: translate(3px, -1px) rotate(0.4deg); }
-  94%           { transform: translate(-2px, 1px) rotate(-0.3deg); }
-  97%           { transform: translate(2px, -1px) rotate(0.3deg); }
+.glow-figure {
+  animation: wobble 5s ease-in-out infinite;
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  position: relative;
+  height: clamp(80px, 14vw, 160px);
+  width: 100%;
+  margin: 0;
 }
-.gold-text {
-  color: var(--gold);
-  text-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+.glow-layer {
+  animation: glow 10s ease-in-out infinite;
+  display: block;
+  width: 100%;
+  text-align: center;
+  font: 900 clamp(22px, 5.5vw, 58px) 'Concert One', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #0a0a0a;
+  line-height: 1.3;
 }
+@keyframes wobble {
+  0%,100% { transform: rotate3d(1,1,0,40deg); }
+  25%     { transform: rotate3d(-1,1,0,40deg); }
+  50%     { transform: rotate3d(-1,-1,0,40deg); }
+  75%     { transform: rotate3d(1,-1,0,40deg); }
+}
+@keyframes glow {
+  0%,100% { text-shadow: 0 0 30px red; }
+  25%     { text-shadow: 0 0 30px orange; }
+  50%     { text-shadow: 0 0 30px forestgreen; }
+  75%     { text-shadow: 0 0 30px cyan; }
+}
+.glow-layer:nth-child(2)  { transform: translateZ(5px); }
+.glow-layer:nth-child(3)  { transform: translateZ(10px); }
+.glow-layer:nth-child(4)  { transform: translateZ(15px); }
+.glow-layer:nth-child(5)  { transform: translateZ(20px); }
+.glow-layer:nth-child(6)  { transform: translateZ(25px); }
+.glow-layer:nth-child(7)  { transform: translateZ(30px); }
+.glow-layer:nth-child(8)  { transform: translateZ(35px); }
+.glow-layer:nth-child(9)  { transform: translateZ(40px); }
+.glow-layer:nth-child(10) { transform: translateZ(45px); }
 .hero-sub {
   font-size: 17px;
   color: var(--text-muted);
