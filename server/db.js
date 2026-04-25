@@ -8,7 +8,7 @@ if (process.env.DATABASE_URL) {
   const { Pool } = require('pg')
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes('sslmode=disable') ? false : undefined
+    ssl: false
   })
   pool.on('error', (err) => { console.error('PostgreSQL pool error:', err) })
 } else {
