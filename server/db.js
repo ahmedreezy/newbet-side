@@ -6,7 +6,10 @@ let isInMemory = false
 if (process.env.DATABASE_URL) {
   // Real PostgreSQL
   const { Pool } = require('pg')
-  pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL.includes('sslmode=disable') ? false : undefined
+  })
   pool.on('error', (err) => { console.error('PostgreSQL pool error:', err) })
 } else {
   // No DATABASE_URL — use pg-mem with file-based snapshot persistence
@@ -19,5 +22,3 @@ if (process.env.DATABASE_URL) {
 }
 
 module.exports = { pool, isInMemory }
-
-
