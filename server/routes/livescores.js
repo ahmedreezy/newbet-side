@@ -5,9 +5,9 @@ const https   = require('https')
 // API key is kept server-side so it is never exposed to the browser.
 // Set FOOTBALL_API_KEY in your .env file before starting the server.
 const API_KEY = process.env.FOOTBALL_API_KEY || process.env.SCORES_API_KEY || ''
-const API_HOST = 'v3.football.api-sports.io'
+const API_HOST = 'api-football-v1.p.rapidapi.com'
 
-// GET /api/livescores  — proxy to api-sports.io /fixtures
+// GET /api/livescores  — proxy to api-football.com (RapidAPI) /fixtures
 // Accepts any query params and forwards them straight to the upstream API.
 router.get('/', (req, res) => {
   if (!API_KEY) {
@@ -22,7 +22,8 @@ router.get('/', (req, res) => {
     method: 'GET',
     timeout: 10000,
     headers: {
-      'x-apisports-key': API_KEY
+      'X-RapidAPI-Key': API_KEY,
+      'X-RapidAPI-Host': API_HOST
     }
   }
 
