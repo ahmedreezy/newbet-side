@@ -2,6 +2,7 @@ const express  = require('express')
 const path     = require('path')
 const fs       = require('fs')
 const multer   = require('multer')
+const bcrypt   = require('bcryptjs')
 const router   = express.Router()
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
@@ -90,7 +91,7 @@ router.get('/user/:userId', async (req, res) => {
 
 // POST create a subscription request with optional proof image
 router.post('/', upload.single('proof'), async (req, res) => {
-  const { userId, planType, paymentMethod, phone } = req.body
+  const { userId, planType, paymentMethod, phone, secretCode } = req.body
   const cleanup = () => { if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {} }
 
   if (!userId || !planType || !paymentMethod) {
@@ -110,11 +111,14 @@ router.post('/', upload.single('proof'), async (req, res) => {
     const amount = planType === 'daily' ? parseFloat(cfg.daily_price || 5000) : parseFloat(cfg.weekly_price || 20000)
     const proofUrl = req.file ? `/uploads/${req.file.filename}` : null
 
+    // Hash the secret code if provided
+    const secretCodeHash = secretCode ? await bcrypt.hash(secretCode, 10) : ''
+
     const { rows: [sub] } = await pool.query(`
-      INSERT INTO subscriptions (user_id, plan_type, payment_method, phone, amount, status, proof_url)
-      VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+      INSERT INTO subscriptions (user_id, plan_type, payment_method, phone, amount, status, proof_url, secret_code_hash)
+      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
       RETURNING *
-    `, [parseInt(userId), planType, paymentMethod, phone || '', amount, proofUrl])
+    `, [parseInt(userId), planType, paymentMethod, phone || '', amount, proofUrl, secretCodeHash])
 
     const { rows: [payment] } = await pool.query(`
       INSERT INTO payments (subscription_id, user_id, amount, plan_type, payment_method, phone, status)
@@ -130,8 +134,46 @@ router.post('/', upload.single('proof'), async (req, res) => {
   }
 })
 
+// POST /verify-access — verify phone + secret code pair; both must match the same subscription
+// Body: { phone, secretCode }
+router.post('/verify-access', async (req, res) => {
+  const { phone, secretCode } = req.body
+  if (!phone) return res.status(400).json({ error: 'phone is required' })
+  try {
+    await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
+    // Look up the user by phone, then their active subscription — all server-side
+    const { rows: userRows } = await pool.query(`SELECT id FROM users WHERE phone = $1`, [phone])
+    if (userRows.length === 0) return res.status(403).json({ error: 'Phone number or secret code is incorrect' })
+    const userId = userRows[0].id
+
+    const { rows } = await pool.query(`
+      SELECT s.*, u.username AS user_name, u.phone AS user_phone
+      FROM subscriptions s
+      LEFT JOIN users u ON u.id = s.user_id
+      WHERE s.user_id = $1 AND s.status = 'active'
+      ORDER BY s.created_at DESC
+      LIMIT 1
+    `, [userId])
+
+    if (rows.length === 0) return res.status(404).json({ error: 'No active subscription found' })
+    const sub = rows[0]
+
+    // Both phone and secret code must match — reject if either is wrong
+    if (sub.secret_code_hash) {
+      if (!secretCode) return res.status(403).json({ error: 'Secret code required' })
+      const valid = await bcrypt.compare(secretCode, sub.secret_code_hash)
+      if (!valid) return res.status(403).json({ error: 'Phone number or secret code is incorrect' })
+    }
+
+    res.json(rowToSub(sub, false))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // POST upload / replace proof image while subscription is pending
-router.post('/:id/proof', upload.single('proof'), async (req, res) => {
+router.post('/:id/proof',upload.single('proof'), async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (!req.file) return res.status(400).json({ error: 'No proof image uploaded' })
   try {

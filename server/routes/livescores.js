@@ -3,15 +3,15 @@ const router  = express.Router()
 const https   = require('https')
 
 // API key is kept server-side so it is never exposed to the browser.
-// Set SCORES_API_KEY in your .env file before starting the server.
-const API_KEY = process.env.SCORES_API_KEY || ''
+// Set FOOTBALL_API_KEY in your .env file before starting the server.
+const API_KEY = process.env.FOOTBALL_API_KEY || process.env.SCORES_API_KEY || ''
 const API_HOST = 'v3.football.api-sports.io'
 
 // GET /api/livescores  — proxy to api-sports.io /fixtures
 // Accepts any query params and forwards them straight to the upstream API.
 router.get('/', (req, res) => {
   if (!API_KEY) {
-    return res.status(503).json({ errors: ['SCORES_API_KEY is not set. Add it to your .env file.'] })
+    return res.status(503).json({ errors: ['FOOTBALL_API_KEY is not set. Add it to your .env file.'] })
   }
   const qs = new URLSearchParams(req.query).toString()
   const path = `/fixtures${qs ? '?' + qs : ''}`

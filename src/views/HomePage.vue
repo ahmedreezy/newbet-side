@@ -2,7 +2,7 @@
   <div id="home-page">
     <div :class="{ 'main-blurred': showModal || showVideoAd }">
       <HeroSection />
-      <FeaturedSection />
+      <FeaturedSection :openVip="triggerVip" @vipOpened="triggerVip = false" />
       <RecentWinnings />
       <LiveScores />
       <TestimonialsSection />
@@ -16,6 +16,7 @@
     <IntroModal
       v-if="showModal"
       @close="closeModal"
+      @openVip="openVipFromModal"
     />
     <Odd2FloatingWidget @open="openWidget" />
     <WhatsAppButton />
@@ -51,7 +52,8 @@ export default {
   data() {
     return {
       showVideoAd: false,
-      showModal: false
+      showModal: false,
+      triggerVip: false
     }
   },
   methods: {
@@ -64,6 +66,10 @@ export default {
     },
     closeModal() {
       this.showModal = false
+    },
+    openVipFromModal() {
+      this.showModal = false
+      this.triggerVip = true
     }
   }
 }

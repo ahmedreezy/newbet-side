@@ -1,6 +1,7 @@
 require('dotenv').config()
 
 let pool
+let isInMemory = false
 
 if (process.env.DATABASE_URL) {
   // Real PostgreSQL
@@ -8,14 +9,15 @@ if (process.env.DATABASE_URL) {
   pool = new Pool({ connectionString: process.env.DATABASE_URL })
   pool.on('error', (err) => { console.error('PostgreSQL pool error:', err) })
 } else {
-  // No DATABASE_URL — use pg-mem (in-memory database for development)
+  // No DATABASE_URL — use pg-mem with file-based snapshot persistence
   const { newDb } = require('pg-mem')
   const db = newDb()
   const { Pool } = db.adapters.createPg(require('pg'))
   pool = new Pool()
-  console.log('⚠  DATABASE_URL not set — using in-memory database (data resets on restart)')
+  isInMemory = true
+  console.log('ℹ  DATABASE_URL not set — using in-memory database with snapshot persistence')
 }
 
-module.exports = { pool }
+module.exports = { pool, isInMemory }
 
 
