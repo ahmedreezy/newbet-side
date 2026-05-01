@@ -42,13 +42,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Floating tip preview cards -->
-    <div class="float-cards">
-      <div class="float-card fc1">⚽ Over 2.5 <span>@1.85</span></div>
-      <div class="float-card fc2">🎰 Both Teams Score <span>@1.70</span></div>
-      <div class="float-card fc3">💰 Home Win <span>@2.10</span></div>
-    </div>
   </section>
 </template>
 
@@ -121,7 +114,7 @@ export default {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: 100px 20px 180px;
+  padding: 100px 20px 48px;
   text-align: center;
 }
 
@@ -255,45 +248,10 @@ export default {
   background: rgba(255, 215, 0, 0.25);
 }
 
-/* Floating cards */
-.float-cards {
-  position: absolute;
-  bottom: 48px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  z-index: 2;
-  padding: 0 20px;
-}
-.float-card {
-  background: var(--float-card-bg);
-  border: 1px solid rgba(255, 215, 0, 0.25);
-  border-radius: 10px;
-  padding: 10px 22px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cream);
-  backdrop-filter: blur(6px);
-  animation: floatCard 4s ease-in-out infinite;
-}
-.float-card span {
-  color: var(--gold);
-  margin-left: 6px;
-  font-weight: 900;
-}
-.fc2 { animation-delay: 0.8s; }
-.fc3 { animation-delay: 1.6s; }
-@keyframes floatCard {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-8px); }
-}
+/* Floating cards removed */
 
 @media (max-width: 600px) {
-  .float-cards { bottom: 24px; }
-  .hero-stats   { gap: 14px; }
+  .hero-stats { gap: 14px; }
 }
 
 /* ── Calligraphic slogan ── */

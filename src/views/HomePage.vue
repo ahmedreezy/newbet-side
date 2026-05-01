@@ -4,7 +4,6 @@
       <HeroSection />
       <FeaturedSection />
       <RecentWinnings />
-      <LiveScores />
       <TestimonialsSection />
       <FooterSection />
     </div>
@@ -26,21 +25,18 @@
 import IntroModal from '../components/IntroModal.vue'
 import HeroSection from '../components/HeroSection.vue'
 import FeaturedSection from '../components/FeaturedSection.vue'
-import LiveScores from '../components/LiveScores.vue'
 import RecentWinnings from '../components/RecentWinnings.vue'
 import FooterSection from '../components/FooterSection.vue'
 import WhatsAppButton from '../components/WhatsAppButton.vue'
 import Odd2FloatingWidget from '../components/Odd2FloatingWidget.vue'
 import VideoAdModal from '../components/VideoAdModal.vue'
 import TestimonialsSection from '../components/TestimonialsSection.vue'
-
 export default {
   name: 'HomePage',
   components: {
     IntroModal,
     HeroSection,
     FeaturedSection,
-    LiveScores,
     RecentWinnings,
     FooterSection,
     WhatsAppButton,

@@ -16,6 +16,7 @@
             <span class="pill-label">{{ opt.label }}</span>
           </button>
         </div>
+        <UserProfile class="nav-user-profile" />
       </div>
     </nav>
 
@@ -25,8 +26,10 @@
 
 <script>
 import './assets/styles/global.css'
+import UserProfile from './components/UserProfile.vue'
 export default {
   name: 'App',
+  components: { UserProfile },
   data() {
     const saved = localStorage.getItem('theme') || 'dark'
     return {
@@ -116,6 +119,7 @@ body.light-mode .theme-nav {
   gap: 10px;
   padding: 0 18px;
 }
+.nav-user-profile { margin-left: auto; }
 .theme-nav-label {
   font-size: 11px;
   font-weight: 600;
