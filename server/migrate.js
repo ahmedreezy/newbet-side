@@ -13,12 +13,11 @@ async function migrate() {
       );
 
       CREATE TABLE IF NOT EXISTS users (
-        id         SERIAL PRIMARY KEY,
-        username   VARCHAR(200) NOT NULL,
-        dob        VARCHAR(20),
-        email      VARCHAR(200),
-        phone      VARCHAR(30) UNIQUE NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW()
+        id            SERIAL PRIMARY KEY,
+        username      VARCHAR(200) NOT NULL,
+        phone         VARCHAR(30) UNIQUE NOT NULL,
+        password_hash VARCHAR(255),
+        created_at    TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS subscriptions (

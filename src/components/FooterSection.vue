@@ -1,33 +1,5 @@
 <template>
   <footer class="footer" id="footer">
-    <!-- Testimonials -->
-    <div class="testimonials-section">
-      <div class="container">
-        <h3 class="section-heading">
-          WINNER <span class="gold-text">TESTIMONIALS</span>
-        </h3>
-        <div class="testimonials-grid">
-          <div v-for="t in testimonials" :key="t.id" class="t-card">
-            <div class="t-header">
-              <div class="t-avatar" :style="{ background: t.avatarColor }">
-                {{ t.initials }}
-              </div>
-              <div class="t-meta">
-                <div class="t-name">{{ t.name }}</div>
-                <div class="t-date">{{ t.date }}</div>
-              </div>
-              <div class="t-stars" aria-label="5 stars">★★★★★</div>
-            </div>
-            <p class="t-message">"{{ t.message }}"</p>
-            <div class="t-win">
-              <span class="t-win-label">Won</span>
-              <span class="t-win-amount">{{ t.won }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Social links -->
     <div class="social-section">
       <div class="container">
@@ -67,44 +39,6 @@ export default {
   name: 'FooterSection',
   data() {
     return {
-      testimonials: [
-        {
-          id: 1,
-          initials: 'JM',
-          name: 'James M.',
-          date: 'Apr 10, 2026',
-          message: 'These tips are insane! Won $850 on a 5-fold accumulator. No cap, best tipster page out there.',
-          won: '$850',
-          avatarColor: 'linear-gradient(135deg, #B8860B, #FFD700)'
-        },
-        {
-          id: 2,
-          initials: 'AS',
-          name: 'Amara S.',
-          date: 'Apr 7, 2026',
-          message: 'I was skeptical at first but the free daily tip came through 3 days in a row. Joined the VIP and never looked back.',
-          won: '$320',
-          avatarColor: 'linear-gradient(135deg, #1a5276, #2e86c1)'
-        },
-        {
-          id: 3,
-          initials: 'TK',
-          name: 'Tunde K.',
-          date: 'Apr 3, 2026',
-          message: 'Free tip landed on a Saturday, turned $15 into $190. I now share it with my whole crew!',
-          won: '$190',
-          avatarColor: 'linear-gradient(135deg, #6c3483, #a569bd)'
-        },
-        {
-          id: 4,
-          initials: 'LR',
-          name: 'Lisa R.',
-          date: 'Mar 29, 2026',
-          message: 'The live scores and tips in one place is what got me hooked. Won on a double last week.',
-          won: '$140',
-          avatarColor: 'linear-gradient(135deg, #1e8449, #27ae60)'
-        }
-      ],
       socials: [
         {
           name: 'Facebook',
@@ -145,93 +79,6 @@ export default {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
-}
-
-/* Testimonials */
-.testimonials-section {
-  padding: 70px 0 60px;
-}
-.section-heading {
-  font-size: 26px;
-  font-weight: 900;
-  text-align: center;
-  margin-bottom: 36px;
-  letter-spacing: 1px;
-}
-.gold-text { color: var(--gold); }
-
-.testimonials-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
-}
-.t-card {
-  background: var(--dark-card);
-  border-radius: 14px;
-  border: 1px solid rgba(255, 215, 0, 0.1);
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  transition: border-color 0.2s;
-}
-.t-card:hover { border-color: rgba(255, 215, 0, 0.3); }
-
-.t-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.t-avatar {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  color: var(--white);
-  font-size: 15px;
-  flex-shrink: 0;
-}
-.t-meta { flex: 1; }
-.t-name {
-  font-weight: 700;
-  font-size: 14px;
-}
-.t-date {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-.t-stars {
-  color: var(--gold);
-  font-size: 13px;
-  letter-spacing: 1px;
-}
-.t-message {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.65;
-  font-style: italic;
-}
-.t-win {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-.t-win-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-}
-.t-win-amount {
-  font-size: 17px;
-  font-weight: 900;
-  color: var(--green);
 }
 
 /* Social links */
