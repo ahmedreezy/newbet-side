@@ -167,49 +167,75 @@
             <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
           </template>
 
-          <!-- ── STEP 2: Registration / Lookup ── -->
+          <!-- ── STEP 2: Registration / Login ── -->
           <template v-else-if="vipStep === 2">
             <div class="mm-icon">👤</div>
             <h3 class="mm-title">YOUR <span class="gold-text">ACCOUNT</span></h3>
-            <div class="reg-tabs">
-              <button :class="['reg-tab', { active: !isReturning }]" @click="isReturning = false">New User</button>
-              <button :class="['reg-tab', { active: isReturning }]" @click="isReturning = true">Returning</button>
+
+            <div v-if="regUser" class="logged-in-box">
+              <div class="li-avatar">{{ regUser.username.charAt(0).toUpperCase() }}</div>
+              <div class="li-info">
+                <div class="li-name">{{ regUser.username }}</div>
+                <div class="li-phone">{{ regUser.phone }}</div>
+              </div>
+              <button type="button" class="li-change" @click="regUser = null; regError = ''">Change</button>
             </div>
 
-            <form v-if="!isReturning" @submit.prevent="registerUser" class="reg-form">
-              <div class="field">
-                <label>Full Name</label>
-                <input v-model="regForm.username" type="text" placeholder="Your full name" required />
+            <template v-else>
+              <div class="reg-tabs">
+                <button type="button" :class="['reg-tab', { active: !isReturning }]" @click="isReturning = false; regError = ''">New User</button>
+                <button type="button" :class="['reg-tab', { active: isReturning }]" @click="isReturning = true; regError = ''">Login</button>
               </div>
-              <div class="field">
-                <label>Date of Birth</label>
-                <input v-model="regForm.dob" type="date" required />
-              </div>
-              <div class="field">
-                <label>Email</label>
-                <input v-model="regForm.email" type="email" placeholder="your@email.com" required />
-              </div>
-              <div class="field">
-                <label>Phone Number</label>
-                <input v-model="regForm.phone" type="tel" placeholder="07XXXXXXXX" required />
-              </div>
-              <p v-if="regError" class="reg-error">{{ regError }}</p>
-              <button type="submit" class="mm-next-btn" :disabled="regLoading">
-                {{ regLoading ? 'Please wait…' : 'Continue →' }}
-              </button>
-            </form>
 
-            <form v-else @submit.prevent="lookupUser" class="reg-form">
-              <div class="field">
-                <label>Your Phone Number</label>
-                <input v-model="lookupPhone" type="tel" placeholder="07XXXXXXXX" required />
-              </div>
-              <p v-if="regError" class="reg-error">{{ regError }}</p>
-              <button type="submit" class="mm-next-btn" :disabled="regLoading">
-                {{ regLoading ? 'Looking up…' : 'Find Account →' }}
-              </button>
-            </form>
+              <form v-if="!isReturning" @submit.prevent="registerUser" class="reg-form">
+                <div class="field">
+                  <label>Full Name</label>
+                  <input v-model="regForm.username" type="text" placeholder="Your full name" required />
+                </div>
+                <div class="field">
+                  <label>Phone Number</label>
+                  <input v-model="regForm.phone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
+                </div>
+                <div class="field">
+                  <label>Password</label>
+                  <div class="pw-wrap">
+                    <input v-model="regForm.password" :type="showRegPw ? 'text' : 'password'" placeholder="Min. 6 characters" required minlength="6" />
+                    <button type="button" class="pw-eye" @click="showRegPw = !showRegPw">{{ showRegPw ? '🙈' : '👁' }}</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Confirm Password</label>
+                  <div class="pw-wrap">
+                    <input v-model="regForm.confirmPassword" :type="showConfirmPw ? 'text' : 'password'" placeholder="Repeat password" required />
+                    <button type="button" class="pw-eye" @click="showConfirmPw = !showConfirmPw">{{ showConfirmPw ? '🙈' : '👁' }}</button>
+                  </div>
+                </div>
+                <p v-if="regError" class="reg-error">{{ regError }}</p>
+                <button type="submit" class="mm-next-btn" :disabled="regLoading">
+                  {{ regLoading ? 'Creating account…' : 'Create Account →' }}
+                </button>
+              </form>
 
+              <form v-else @submit.prevent="loginUser" class="reg-form">
+                <div class="field">
+                  <label>Phone Number</label>
+                  <input v-model="loginForm.phone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
+                </div>
+                <div class="field">
+                  <label>Password</label>
+                  <div class="pw-wrap">
+                    <input v-model="loginForm.password" :type="showLoginPw ? 'text' : 'password'" placeholder="Your password" required />
+                    <button type="button" class="pw-eye" @click="showLoginPw = !showLoginPw">{{ showLoginPw ? '🙈' : '👁' }}</button>
+                  </div>
+                </div>
+                <p v-if="regError" class="reg-error">{{ regError }}</p>
+                <button type="submit" class="mm-next-btn" :disabled="regLoading">
+                  {{ regLoading ? 'Logging in…' : 'Login →' }}
+                </button>
+              </form>
+            </template>
+
+            <button v-if="regUser" class="mm-next-btn" style="margin-top:12px" @click="vipStep = 3">Continue →</button>
             <p class="mm-back" @click="vipStep = 1">← Back</p>
           </template>
 
@@ -329,7 +355,7 @@
             <form @submit.prevent="checkStatus" class="reg-form">
               <div class="field">
                 <label>Your Phone Number</label>
-                <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required />
+                <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
               </div>
               <div class="field">
                 <label>Secret Code <span style="color:#666;font-weight:400;text-transform:none">(generated at registration)</span></label>
@@ -442,9 +468,10 @@ export default {
       vipCfg: { daily_price: 5000, weekly_price: 20000, currency: 'UGX', mtn_number: '', airtel_number: '', whatsapp_link: '' },
       selectedPlan: 'weekly',
       selectedProvider: '',
-      // Registration
+      // Registration / Login
       isReturning: false,
-      regForm: { username: '', dob: '', email: '', phone: '' },
+      regForm: { username: '', phone: '', password: '', confirmPassword: '' },
+      loginForm: { phone: '', password: '' },
       regUser: null,
       regError: '',
       regLoading: false,
@@ -523,6 +550,10 @@ export default {
       this.showVipMenu = false
     },
     async registerUser() {
+      if (this.regForm.password !== this.regForm.confirmPassword) {
+        this.regError = 'Passwords do not match'
+        return
+      }
       this.regLoading = true
       this.regError = ''
       try {
@@ -540,7 +571,7 @@ export default {
         this.regLoading = false
       }
     },
-    async lookupUser() {
+    async loginUser() {
       this.regLoading = true
       this.regError = ''
       try {
@@ -996,7 +1027,18 @@ export default {
 }
 .field input:focus { border-color: rgba(255,215,0,0.5); }
 .field input::placeholder { color: var(--text-muted); opacity: 0.6; }
-.reg-error { color: #ff5252; font-size: 12px; margin-bottom: 10px; text-align: center; }
+.pw-wrap { position: relative; display: flex; }
+.pw-wrap input { flex: 1; padding-right: 44px !important; }
+.pw-eye { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; color: rgba(255,255,255,0.45); padding: 4px; line-height: 1; }
+.pw-eye:hover { color: var(--gold, #ffd700); }
+/* Logged-in box (step 2 when account already set) */
+.logged-in-box { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,215,0,0.2); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+.li-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, var(--gold-dark,#b8860b), var(--gold,#ffd700)); color: #0a0a0a; font-weight: 900; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.li-info { flex: 1; min-width: 0; }
+.li-name { font-weight: 700; font-size: 14px; color: var(--white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.li-phone { font-size: 12px; color: var(--text-muted,#aaa); }
+.li-change { background: none; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: var(--text-muted,#aaa); font-size: 12px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+.li-change:hover { border-color: var(--gold,#ffd700); color: var(--gold,#ffd700); }
 
 /* Provider cards */
 .provider-cards { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; }
