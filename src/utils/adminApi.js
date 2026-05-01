@@ -15,7 +15,8 @@ adminApi.interceptors.response.use(
   error => {
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('adminToken')
-      window.location.href = '/admin/login'
+      window.location.href = '/#/admin/login'
+      return new Promise(() => {}) // never resolves — prevents catch blocks from firing
     }
     return Promise.reject(error)
   }
