@@ -1,7 +1,7 @@
 <template>
   <a
     class="whatsapp-btn"
-    href="https://chat.whatsapp.com/Dsil2pJXZBG2lyzmqWSrmk"
+    href="https://whatsapp.com/channel/0029Vb77Bmb0wajqBRujZY30"
     target="_blank"
     title="Join our WhatsApp VIP group"
     rel="noopener noreferrer"

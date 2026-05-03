@@ -37,7 +37,7 @@
       </div>
 
       <p class="modal-sub">Join our VIP group for full daily predictions</p>
-      <button class="cta-btn" @click="$emit('close')">View Full Tips →</button>
+      <button class="cta-btn" @click="$emit('openVip')">View Full Tips →</button>
     </div>
   </div>
 </template>
@@ -54,7 +54,7 @@ const DEFAULT = {
 
 export default {
   name: 'IntroModal',
-  emits: ['close'],
+  emits: ['close', 'openVip'],
   data() {
     return {
       odd: { ...DEFAULT },

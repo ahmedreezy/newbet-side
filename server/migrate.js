@@ -32,6 +32,7 @@ async function migrate() {
         rejection_reason TEXT,
         betslip_link     VARCHAR(500) DEFAULT '',
         betslip_code     VARCHAR(100) DEFAULT '',
+        secret_code_hash VARCHAR(255) DEFAULT '',
         started_at       TIMESTAMPTZ,
         expires_at       TIMESTAMPTZ,
         created_at       TIMESTAMPTZ DEFAULT NOW()

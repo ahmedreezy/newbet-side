@@ -58,29 +58,20 @@
 
       <div class="picks-grid">
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
-          <!-- jersey cartoon top strip / image -->
-          <div class="pick-kit-bar" :class="{ 'has-image': pick.imageUrl }">
-            <template v-if="pick.imageUrl">
-              <img :src="pick.imageUrl" :alt="pick.home + ' vs ' + pick.away" class="pick-card-img" />
-            </template>
-            <template v-else>
-              <svg class="kit-svg" viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">
+          <!-- Full-width image -->
+          <div class="pick-img-bar">
+            <img v-if="pick.imageUrl" :src="pick.imageUrl" :alt="pick.caption || 'prediction'" class="pick-card-img" />
+            <div v-else class="pick-img-placeholder">
+              <svg viewBox="0 0 80 54" width="56" height="38" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
                 <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
-                      :fill="pick.kitColor" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-                <text x="40" y="36" text-anchor="middle" font-size="16" font-weight="900" fill="rgba(255,255,255,0.85)">
-                  {{ pick.kitNumber }}
-                </text>
+                      fill="#FFD700" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
               </svg>
-            </template>
-            <div class="pick-comp-badge">{{ pick.competition }}</div>
+            </div>
           </div>
           <!-- content -->
           <div class="pick-body">
-            <div class="pick-match">
-              <span class="pick-home">{{ pick.home }}</span>
-              <span class="pick-vs">VS</span>
-              <span class="pick-away">{{ pick.away }}</span>
-            </div>
+            <!-- Caption -->
+            <p v-if="pick.caption" class="pick-caption">{{ pick.caption }}</p>
             <!-- Win probability -->
             <div class="pick-prob-bar">
               <div class="pick-prob-header">
@@ -248,6 +239,25 @@
             <p class="mm-back" @click="vipStep = 1">← Back</p>
           </template>
 
+          <!-- ── STEP 2.5: Secret Code Display ── -->
+          <template v-else-if="vipStep === 'secret'">
+            <div class="mm-icon">🔐</div>
+            <h3 class="mm-title">YOUR <span class="gold-text">SECRET CODE</span></h3>
+            <p class="mm-sub">Save this code somewhere safe — you'll need it to access your VIP tips.<br/>It cannot be recovered if lost.</p>
+            <div class="secret-code-box">
+              <div class="secret-code-label">🔑 Your Unique Access Code</div>
+              <div class="secret-code-display">{{ generatedCode }}</div>
+              <button class="copy-btn secret-copy-btn" @click="copySecretCode">
+                {{ secretCopied ? '✓ Copied!' : 'Copy Code' }}
+              </button>
+            </div>
+            <div class="secret-warning">
+              ⚠️ This code is shown <strong>only once</strong>. Store it in your notes or screenshot it now. You will need it every time you check your VIP status.
+            </div>
+            <button class="mm-next-btn" @click="vipStep = 3">I've saved it — Continue to Payment →</button>
+            <p class="mm-back" @click="vipStep = 2">← Back</p>
+          </template>
+
           <!-- ── STEP 3: Payment Method ── -->
           <template v-else-if="vipStep === 3">
             <div class="mm-icon">📱</div>
@@ -347,6 +357,10 @@
                 <label>Your Phone Number</label>
                 <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
               </div>
+              <div class="field">
+                <label>Secret Code <span style="color:#666;font-weight:400;text-transform:none">(generated at registration)</span></label>
+                <input v-model="statusSecretCode" type="text" placeholder="XXXX-XXXX-XXXX" style="letter-spacing:2px;font-family:monospace" />
+              </div>
               <p v-if="statusError" class="reg-error">{{ statusError }}</p>
               <button type="submit" class="mm-next-btn" :disabled="statusLoading">
                 {{ statusLoading ? 'Checking…' : '🔍 Check Status' }}
@@ -429,6 +443,18 @@ const STATIC_PICKS = [
 
 export default {
   name: 'FeaturedSection',
+  emits: ['vipOpened'],
+  props: {
+    openVip: { type: Boolean, default: false }
+  },
+  watch: {
+    openVip(val) {
+      if (val) {
+        this.openVipMenu()
+        this.$emit('vipOpened')
+      }
+    }
+  },
   data() {
     const d = new Date()
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -449,9 +475,10 @@ export default {
       regUser: null,
       regError: '',
       regLoading: false,
-      showRegPw: false,
-      showConfirmPw: false,
-      showLoginPw: false,
+      lookupPhone: '',
+      // Secret code
+      generatedCode: '',
+      secretCopied: false,
       // Payment
       payError: '',
       payLoading: false,
@@ -465,6 +492,7 @@ export default {
       lateProofSent: false,
       // Status check
       statusPhone: '',
+      statusSecretCode: '',
       statusError: '',
       statusLoading: false,
       statusChecked: false,
@@ -529,16 +557,16 @@ export default {
       this.regLoading = true
       this.regError = ''
       try {
-        const { data } = await axios.post('/api/users', {
-          username: this.regForm.username,
-          phone: this.regForm.phone,
-          password: this.regForm.password
-        })
-        const { token, ...userInfo } = data
-        if (token) { try { const { saveUser } = await import('../utils/userAuth.js'); saveUser(userInfo, token) } catch {} }
-        this.regUser = userInfo
+        const { data } = await axios.post('/api/users', this.regForm)
+        this.regUser = data
+        this.toSecretStep()
       } catch (err) {
-        this.regError = err.response?.data?.error || 'Registration failed. Please try again.'
+        if (err.response && err.response.status === 409) {
+          this.regUser = err.response.data.user
+          this.toSecretStep()
+        } else {
+          this.regError = err.response?.data?.error || 'Registration failed. Please try again.'
+        }
       } finally {
         this.regLoading = false
       }
@@ -547,18 +575,33 @@ export default {
       this.regLoading = true
       this.regError = ''
       try {
-        const { data } = await axios.post('/api/users/login', {
-          phone: this.loginForm.phone,
-          password: this.loginForm.password
-        })
-        const { token, ...userInfo } = data
-        if (token) { try { const { saveUser } = await import('../utils/userAuth.js'); saveUser(userInfo, token) } catch {} }
-        this.regUser = userInfo
-      } catch (err) {
-        this.regError = err.response?.data?.error || 'Login failed. Check your phone and password.'
+        const { data } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.lookupPhone))
+        this.regUser = data
+        this.toSecretStep()
+      } catch {
+        this.regError = 'Phone number not found. Please register as a new user.'
       } finally {
         this.regLoading = false
       }
+    },
+    generateSecretCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+      const arr = new Uint8Array(12)
+      crypto.getRandomValues(arr)
+      const raw = Array.from(arr, b => chars[b % chars.length]).join('')
+      return raw.slice(0, 4) + '-' + raw.slice(4, 8) + '-' + raw.slice(8, 12)
+    },
+    toSecretStep() {
+      this.generatedCode = this.generateSecretCode()
+      this.secretCopied = false
+      this.vipStep = 'secret'
+    },
+    async copySecretCode() {
+      try {
+        await navigator.clipboard.writeText(this.generatedCode)
+        this.secretCopied = true
+        setTimeout(() => { this.secretCopied = false }, 3000)
+      } catch { /* clipboard denied */ }
     },
     handleProofFile(e) {
       const file = e.target.files[0]
@@ -583,6 +626,7 @@ export default {
         formData.append('planType', this.selectedPlan)
         formData.append('paymentMethod', this.selectedProvider)
         formData.append('phone', phone)
+        if (this.generatedCode) formData.append('secretCode', this.generatedCode)
         if (this.proofFile) formData.append('proof', this.proofFile)
         const { data } = await axios.post('/api/subscriptions', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
@@ -620,20 +664,36 @@ export default {
       this.activeSub = null
       this.pendingStatusMsg = ''
       try {
-        const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
-        const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
-        const active = subs.find(s => s.status === 'active')
-        const pending = subs.find(s => s.status === 'pending')
-        if (active) {
-          this.activeSub = active
-        } else if (pending) {
-          this.pendingStatusMsg = '⏳ Payment pending — our team is verifying. Check back soon.'
-        } else {
-          this.pendingStatusMsg = 'No active subscription found for this number.'
-        }
+        const { data: sub } = await axios.post('/api/subscriptions/verify-access', {
+          phone: this.statusPhone,
+          secretCode: this.statusSecretCode || undefined
+        })
+        this.activeSub = sub
         this.statusChecked = true
-      } catch {
-        this.statusError = 'Phone number not found. Please register first.'
+      } catch (verifyErr) {
+        const status = verifyErr.response?.status
+        const msg = verifyErr.response?.data?.error || ''
+        if (status === 403) {
+          this.statusError = msg === 'Secret code required'
+            ? 'Please enter your secret code to access your VIP details.'
+            : '❌ Phone number or secret code is incorrect. Both must match.'
+        } else if (status === 404) {
+          // Active sub not found — check for pending without exposing betslip
+          try {
+            const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
+            const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
+            const pending = subs.find(s => s.status === 'pending')
+            this.pendingStatusMsg = pending
+              ? '⏳ Payment pending — our team is verifying. Check back soon.'
+              : 'No active subscription found for this number.'
+          } catch {
+            this.pendingStatusMsg = 'No active subscription found for this number.'
+          }
+          this.statusChecked = true
+        } else {
+          this.statusError = 'Could not verify status. Please try again.'
+          this.statusChecked = true
+        }
       } finally {
         this.statusLoading = false
       }
@@ -781,43 +841,27 @@ export default {
 }
 
 /* Kit top strip */
-.pick-kit-bar {
-  background: var(--kit-bar-bg);
-  padding: 16px 16px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+/* Image bar */
+.pick-img-bar {
+  width: 100%;
   position: relative;
-}
-.pick-kit-bar.has-image {
-  padding: 0;
-  background: var(--dark);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
 }
 .pick-card-img {
   width: 100%;
-  height: 140px;
+  height: 180px;
   object-fit: cover;
   display: block;
 }
-.pick-kit-bar.has-image .pick-comp-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 10px;
-}
-.kit-svg {
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
-}
-.pick-comp-badge {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gold);
-  background: rgba(255,215,0,0.1);
-  border: 1px solid rgba(255,215,0,0.2);
-  padding: 3px 10px;
-  border-radius: 20px;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
+.pick-img-placeholder {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,215,0,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 /* Body */
@@ -828,26 +872,14 @@ export default {
   flex-direction: column;
   gap: 12px;
 }
-.pick-match {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-.pick-home, .pick-away {
+/* Caption */
+.pick-caption {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--white);
-  flex: 1;
-}
-.pick-away { text-align: right; }
-.pick-vs {
-  font-size: 10px;
-  font-weight: 900;
-  color: var(--gold);
-  background: rgba(255,215,0,0.1);
-  padding: 2px 7px;
-  border-radius: 4px;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.92;
 }
 
 /* ── Win probability bar ── */
@@ -1097,5 +1129,61 @@ export default {
 @media (max-width: 640px) {
   .picks-grid { grid-template-columns: 1fr; }
   .sh-row     { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Secret Code Step ── */
+.secret-code-box {
+  background: rgba(255, 215, 0, 0.06);
+  border: 2px solid rgba(255, 215, 0, 0.4);
+  border-radius: 16px;
+  padding: 24px 20px;
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.secret-code-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.secret-code-display {
+  font-size: 28px;
+  font-weight: 900;
+  font-family: monospace;
+  color: var(--gold);
+  letter-spacing: 4px;
+  background: var(--dark-3);
+  padding: 14px 24px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  word-break: break-all;
+  text-align: center;
+}
+.secret-copy-btn {
+  background: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 24px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.secret-copy-btn:hover { background: rgba(255, 215, 0, 0.25); }
+.secret-warning {
+  background: rgba(255, 100, 0, 0.08);
+  border: 1px solid rgba(255, 100, 0, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #ffb347;
+  line-height: 1.6;
+  text-align: left;
+  margin-bottom: 8px;
 }
 </style>

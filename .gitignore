@@ -1,6 +1,13 @@
 .DS_Store
 node_modules
-/dist
+# dist is committed so cPanel doesn't need vue-cli build tools
+# /dist
+
+# Deployment log
+deploy.log
+
+# Local PostgreSQL start script (Windows only)
+start-postgres.ps1
 
 # local env files
 .env
