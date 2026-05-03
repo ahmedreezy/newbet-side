@@ -124,7 +124,18 @@ async function migrate() {
         updated_at  TIMESTAMPTZ  DEFAULT NOW()
       );
     `)
-    console.log('✓ Migration complete — all tables created.')
+    console.log('✓ Tables created/verified.')
+
+    // Column additions for schema evolution — safe to run on existing DBs
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_link     VARCHAR(500) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_code     VARCHAR(100) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS proof_url        VARCHAR(500);
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at       TIMESTAMPTZ;
+    `)
+    console.log('✓ Migration complete — all tables and columns up to date.')
   } finally {
     client.release()
   }
