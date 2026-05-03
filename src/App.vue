@@ -1,7 +1,7 @@
 <template>
   <div id="app-root" :class="{ 'light-mode': isLight }">
     <!-- ── Theme Nav Bar ── -->
-    <nav class="theme-nav" aria-label="Appearance settings">
+    <nav v-if="!isAdminRoute" class="theme-nav" aria-label="Appearance settings">
       <div class="theme-nav-inner">
         <span class="theme-nav-label">Appearance</span>
         <div class="theme-nav-pills" role="group" aria-label="Choose theme">
@@ -44,6 +44,9 @@ export default {
     }
   },
   computed: {
+    isAdminRoute() {
+      return this.$route && this.$route.path.startsWith('/admin')
+    },
     isLight() {
       if (this.themeMode === 'system') return this.systemIsLight
       return this.themeMode === 'light'

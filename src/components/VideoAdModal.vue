@@ -1,5 +1,5 @@
 <template>
-  <div class="video-ad-overlay" role="dialog" aria-modal="true" aria-label="Video Advertisement">
+  <div class="video-ad-overlay" role="dialog" aria-modal="true" aria-label="Video Advertisement" @click.self="skip">
     <div class="video-ad-wrap">
       <!-- Ad label -->
       <div class="ad-top-bar">

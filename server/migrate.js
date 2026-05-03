@@ -24,6 +24,7 @@ async function migrate() {
         id               SERIAL PRIMARY KEY,
         user_id          INTEGER REFERENCES users(id) ON DELETE CASCADE,
         plan_type        VARCHAR(20)  NOT NULL,
+        odds_type        VARCHAR(20)  NOT NULL DEFAULT '2',
         payment_method   VARCHAR(20)  NOT NULL,
         phone            VARCHAR(30)  DEFAULT '',
         amount           NUMERIC       NOT NULL,
@@ -135,6 +136,9 @@ async function migrate() {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS proof_url        VARCHAR(500);
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at       TIMESTAMPTZ;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at       TIMESTAMPTZ;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS secret_code_hash VARCHAR(255) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS odds_type        VARCHAR(20)  DEFAULT '2';
     `)
     console.log('✓ Migration complete — all tables and columns up to date.')
   } finally {

@@ -1,4 +1,192 @@
-# Changes Report — May 1, 2026
+# Changes Report
+
+_Generated after the full implementation sprint._
+
+---
+
+## 1. Live Scores — Removed
+
+The live scores feature was no longer relevant and has been fully removed.
+
+**Files deleted:**
+- `server/routes/livescores.js`
+- `src/components/LiveScores.vue`
+
+**Files modified:**
+- `server/app.js` — removed `livescoresRouter` import and `app.use('/api/livescores', …)` registration
+
+**Test coverage:**
+- `server/__tests__/livescores.test.js` (new) — verifies `GET /api/livescores` returns 404
+
+---
+
+## 2. Unified Login Flow
+
+Users who are already logged in (token stored in `localStorage`) will no longer be asked to log in again when opening the VIP purchase wizard.
+
+**How it works:**
+- `openVipMenu()` in `FeaturedSection.vue` calls `isLoggedIn()` from `src/utils/userAuth.js`
+- If the user is already authenticated, `regUser` is pre-filled with `getUser()` and the auth step (step 3) is skipped entirely via `goToAuthStep()`
+- Only unauthenticated users see the register/login form
+
+**Files modified:**
+- `src/components/FeaturedSection.vue` — `openVipMenu()`, new `goToAuthStep()` method, import of `isLoggedIn` / `getUser`
+- `loginUser()` fixed to use `POST /api/users/login` (was incorrectly doing GET by phone)
+
+**Test coverage:**
+- `server/__tests__/userAuth.test.js` (updated) — 4 new tests in the "Unified login flow (auth-skip logic)" suite
+
+---
+
+## 3. New Odds Packages — Prices & Structure
+
+The old two-tier pricing (Daily 5,000 UGX / Weekly 20,000 UGX) has been replaced with five distinct packages:
+
+| Package | Period | Price (UGX) |
+|---------|--------|-------------|
+| 1.5 Odds | Weekly only | 45,000 |
+| 2 Odds | Daily | 10,000 |
+| 2 Odds | Weekly | 45,000 |
+| 5 Odds | Daily | 15,000 |
+| 5 Odds | Weekly | 55,000 |
+
+Each package has its own:
+- Price field configurable by admin (`odds_X_Y_price`)
+- Betslip link (`odds_X_Y_betslip_link`)
+- Betslip code (`odds_X_Y_betslip_code`)
+
+Note: **1.5 Odds is weekly-only** — the Daily option is hidden/blocked for this package.
+
+---
+
+## 4. Database Schema Change
+
+**File modified:** `server/migrate.js`
+
+- Added `odds_type VARCHAR(20) NOT NULL DEFAULT '2'` to the `CREATE TABLE IF NOT EXISTS subscriptions` block
+- Added `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS odds_type VARCHAR(20) DEFAULT '2'` to the safe migration block (for existing databases)
+
+---
+
+## 5. Backend — Config Route
+
+**File modified:** `server/routes/config.js`
+
+- `getVipConfig()` now parses all 5 per-package price keys from `vip_config`
+- `PUT /vip-config` `allowed` array expanded to include 15 new keys:
+  - 5 price keys: `odds_1_5_weekly_price`, `odds_2_daily_price`, `odds_2_weekly_price`, `odds_5_daily_price`, `odds_5_weekly_price`
+  - 10 betslip keys: one link + one code per package
+- Old `daily_price` / `weekly_price` / `daily_betslip_*` / `weekly_betslip_*` keys remain in `allowed` for backward compatibility
+
+---
+
+## 6. Backend — Subscriptions Route
+
+**File modified:** `server/routes/subscriptions.js`
+
+- `rowToSub()` now includes `oddsType: row.odds_type || '2'`
+- `POST /` accepts `oddsType` in request body; validates against `VALID_COMBOS`:
+  ```
+  { '1.5': ['weekly'], '2': ['daily', 'weekly'], '5': ['daily', 'weekly'] }
+  ```
+  Returns 400 for invalid combinations (e.g. 1.5 + daily)
+- Amount is computed by looking up `odds_X_Y_price` from `vip_config`, with hardcoded fallback defaults
+- `odds_type` is stored in the `subscriptions` table on INSERT
+- `PATCH /:id` confirm block now builds the betslip key from `sub.odds_type` (e.g. `odds_2_daily_betslip_link`) instead of a single daily/weekly key
+
+**Test coverage:**
+- `server/__tests__/subscriptions.test.js` (new) — 9 tests:
+  - All 5 valid package combos → 201 with correct amount
+  - 1.5 + daily → 400 invalid combination
+  - Unknown oddsType → 400
+  - Missing oddsType defaults to '2' (daily and weekly)
+  - `oddsType` field present in response
+
+---
+
+## 7. Frontend — VIP Purchase Wizard (FeaturedSection.vue)
+
+**File modified:** `src/components/FeaturedSection.vue`
+
+The VIP purchase flow has been completely restructured into a 6-step wizard:
+
+| Step | Description |
+|------|-------------|
+| 1 | **Odds Selection** — Choose 1.5 / 2 / 5 Odds |
+| 2 | **Period Selection** — Daily or Weekly (1.5 Odds shows Weekly only) |
+| 3 | **Auth** — Register or log in (skipped if already logged in) |
+| `'secret'` | **Secret Code** — displayed before payment |
+| `'payment'` | **Payment Method** — MTN / Airtel with proof upload |
+| `'submitted'` | **Confirmation** — submission received |
+| `'status'` | **Status Check** — check existing subscription |
+
+**Key additions:**
+- `selectedOdds` data property
+- `availablePeriods` computed (filters periods for 1.5 Odds → weekly only)
+- `PRICE_DEFAULTS` computed (per-package hardcoded fallbacks)
+- `selectedPlanAmount` updated to delegate to `packageAmount(period)`
+- `goToPeriodStep()` — auto-skips period step for 1.5 Odds
+- `goToAuthStep()` — skips auth step if user is already logged in
+- `submitPayment()` appends `oddsType` to FormData
+- New CSS: `.odds-cards`, `.odds-card`, `.odds-badge`, `.weekly-only-badge`, `.odds-hot-badge` + responsive styles
+
+---
+
+## 8. Admin Panel — PaymentsOverview.vue
+
+**File modified:** `src/components/admin/PaymentsOverview.vue`
+
+**Subscription list:**
+- Tier tabs updated: removed old "5k" / "20k" labels
+- New **odds sub-filter chips** row appears below the tier tabs, showing relevant packages per tier (Daily: All / 2 Odds / 5 Odds; Weekly: All / 1.5 Odds / 2 Odds / 5 Odds)
+- Subscription card tier ribbon updated to show `DAILY — X ODDS` / `WEEKLY — X ODDS`
+- `filterOdds` data property added; `displayed` computed now also filters by `filterOdds`
+- `oddsChips` computed added; `countByOdds(val)` method added
+- `focusOnSub()` resets `filterOdds = 'all'` on focus
+
+**Config settings panel:**
+- Removed old 2-field pricing (Daily Price / Weekly Price)
+- Removed old single Daily / Weekly betslip sections
+- Added **5 per-package sections**, each with: Price (UGX) + Betslip Code + Betslip Link
+  - 1.5 Odds — Weekly
+  - 2 Odds — Daily
+  - 2 Odds — Weekly
+  - 5 Odds — Daily
+  - 5 Odds — Weekly
+- New CSS: `.odds-filter-row`, `.odds-chip`, `.tier-ribbon-row`, `.odds-ribbon`, `.pkg-label`, `.cfg-field-full`
+
+---
+
+## 9. Test Coverage Summary
+
+| Test File | Status | Tests |
+|-----------|--------|-------|
+| `server/__tests__/livescores.test.js` | NEW | 2 |
+| `server/__tests__/subscriptions.test.js` | NEW | 9 |
+| `server/__tests__/userAuth.test.js` | UPDATED | +4 new (total: 18) |
+| `server/__tests__/payments.test.js` | NEW | 6 |
+
+**Total: 37 tests, all passing.**
+
+---
+
+## 10. Files Summary
+
+| File | Action |
+|------|--------|
+| `server/routes/livescores.js` | DELETED |
+| `src/components/LiveScores.vue` | DELETED |
+| `server/app.js` | Modified — removed livescores route |
+| `server/migrate.js` | Modified — added `odds_type` column |
+| `server/routes/config.js` | Modified — 15 new config keys |
+| `server/routes/subscriptions.js` | Modified — oddsType validation, amount lookup, DB insert |
+| `src/components/FeaturedSection.vue` | Modified — full 6-step wizard rewrite |
+| `src/components/admin/PaymentsOverview.vue` | Modified — odds filters, config panel |
+| `server/__tests__/livescores.test.js` | NEW |
+| `server/__tests__/subscriptions.test.js` | NEW |
+| `server/__tests__/payments.test.js` | NEW |
+| `server/__tests__/userAuth.test.js` | Updated |
+ — May 1, 2026
 
 ## Summary
 

@@ -137,38 +137,82 @@
         <div class="mm-sheet">
           <button class="mm-close" @click="closeVip" aria-label="Close">✕</button>
 
-          <!-- ── STEP 1: Plan Selection ── -->
+          <!-- ── STEP 1: Odds Category ── -->
           <template v-if="vipStep === 1">
             <div class="mm-icon">👑</div>
             <h3 class="mm-title">JOIN <span class="gold-text">VIP TIPS</span></h3>
-            <p class="mm-sub">Unlock all expert tips, odds &amp; daily predictions</p>
+            <p class="mm-sub">Choose your odds package to unlock expert predictions</p>
+            <div class="odds-cards">
+              <div
+                class="odds-card"
+                :class="{ selected: selectedOdds === '1.5' }"
+                @click="selectedOdds = '1.5'"
+              >
+                <div class="odds-value">1.5</div>
+                <div class="odds-label">ODDS</div>
+                <div class="odds-desc">Safe picks, high accuracy</div>
+                <div class="odds-badge weekly-only-badge">Weekly only</div>
+              </div>
+              <div
+                class="odds-card"
+                :class="{ selected: selectedOdds === '2', 'odds-popular': true }"
+                @click="selectedOdds = '2'"
+              >
+                <span class="odds-hot-badge">POPULAR</span>
+                <div class="odds-value">2</div>
+                <div class="odds-label">ODDS</div>
+                <div class="odds-desc">Best risk-reward balance</div>
+                <div class="odds-badge">Daily &amp; Weekly</div>
+              </div>
+              <div
+                class="odds-card"
+                :class="{ selected: selectedOdds === '5' }"
+                @click="selectedOdds = '5'"
+              >
+                <div class="odds-value">5</div>
+                <div class="odds-label">ODDS</div>
+                <div class="odds-desc">High-risk, high-reward</div>
+                <div class="odds-badge">Daily &amp; Weekly</div>
+              </div>
+            </div>
+            <button class="mm-next-btn" :disabled="!selectedOdds" @click="goToPeriodStep">Continue →</button>
+            <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
+          </template>
+
+          <!-- ── STEP 2: Period Selection ── -->
+          <template v-else-if="vipStep === 2">
+            <div class="mm-icon">📅</div>
+            <h3 class="mm-title"><span class="gold-text">{{ selectedOdds }} ODDS</span> — Choose Period</h3>
+            <p class="mm-sub">Select how long you want access</p>
             <div class="mm-plans">
               <div
+                v-if="availablePeriods.includes('daily')"
                 class="mm-plan selectable"
                 :class="{ selected: selectedPlan === 'daily' }"
                 @click="selectedPlan = 'daily'"
               >
                 <div class="plan-name">Daily</div>
-                <div class="plan-price">{{ (vipCfg.daily_price || 5000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
-                <div class="plan-period">1 day access</div>
+                <div class="plan-price">{{ packageAmount('daily').toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
+                <div class="plan-period">24 hours access</div>
               </div>
               <div
+                v-if="availablePeriods.includes('weekly')"
                 class="mm-plan selectable"
-                :class="{ selected: selectedPlan === 'weekly', 'plan-popular': true }"
+                :class="{ selected: selectedPlan === 'weekly', 'plan-popular': availablePeriods.length > 1 }"
                 @click="selectedPlan = 'weekly'"
               >
-                <span class="plan-badge">BEST VALUE</span>
+                <span v-if="availablePeriods.length > 1" class="plan-badge">BEST VALUE</span>
                 <div class="plan-name">Weekly</div>
-                <div class="plan-price">{{ (vipCfg.weekly_price || 20000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
-                <div class="plan-period">6 days access</div>
+                <div class="plan-price">{{ packageAmount('weekly').toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
+                <div class="plan-period">7 days access</div>
               </div>
             </div>
-            <button class="mm-next-btn" @click="vipStep = 2">Continue →</button>
-            <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
+            <button class="mm-next-btn" :disabled="!selectedPlan" @click="goToAuthStep">Continue →</button>
+            <p class="mm-back" @click="vipStep = 1">← Back</p>
           </template>
 
-          <!-- ── STEP 2: Registration / Login ── -->
-          <template v-else-if="vipStep === 2">
+          <!-- ── STEP 3: Registration / Login ── -->
+          <template v-else-if="vipStep === 3">
             <div class="mm-icon">👤</div>
             <h3 class="mm-title">YOUR <span class="gold-text">ACCOUNT</span></h3>
 
@@ -235,11 +279,11 @@
               </form>
             </template>
 
-            <button v-if="regUser" class="mm-next-btn" style="margin-top:12px" @click="vipStep = 3">Continue →</button>
-            <p class="mm-back" @click="vipStep = 1">← Back</p>
+            <button v-if="regUser" class="mm-next-btn" style="margin-top:12px" @click="toSecretStep">Continue →</button>
+            <p class="mm-back" @click="vipStep = 2">← Back</p>
           </template>
 
-          <!-- ── STEP 2.5: Secret Code Display ── -->
+          <!-- ── STEP 4 (secret): Secret Code Display ── -->
           <template v-else-if="vipStep === 'secret'">
             <div class="mm-icon">🔐</div>
             <h3 class="mm-title">YOUR <span class="gold-text">SECRET CODE</span></h3>
@@ -252,14 +296,14 @@
               </button>
             </div>
             <div class="secret-warning">
-              ⚠️ This code is shown <strong>only once</strong>. Store it in your notes or screenshot it now. You will need it every time you check your VIP status.
+              ⚠️ This code is shown <strong>only once</strong>. Write it down or screenshot it now. You will need it every time you check your VIP status.
             </div>
-            <button class="mm-next-btn" @click="vipStep = 3">I've saved it — Continue to Payment →</button>
-            <p class="mm-back" @click="vipStep = 2">← Back</p>
+            <button class="mm-next-btn" @click="vipStep = 'payment'">I've saved it — Continue to Payment →</button>
+            <p class="mm-back" @click="vipStep = 3">← Back</p>
           </template>
 
-          <!-- ── STEP 3: Payment Method ── -->
-          <template v-else-if="vipStep === 3">
+          <!-- ── STEP 5 (payment): Payment Method ── -->
+          <template v-else-if="vipStep === 'payment'">
             <div class="mm-icon">📱</div>
             <h3 class="mm-title">PAY VIA <span class="gold-text">MOBILE MONEY</span></h3>
             <p class="mm-sub">Choose your provider and follow the instructions</p>
@@ -296,7 +340,7 @@
               </ol>
               <div class="pay-amount-badge">
                 Amount: {{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}
-                <span class="pay-plan-tag">{{ selectedPlan }} plan</span>
+                <span class="pay-plan-tag">{{ selectedOdds }} odds · {{ selectedPlan }}</span>
               </div>
             </div>
 
@@ -314,22 +358,22 @@
             <button class="mm-next-btn" :disabled="!selectedProvider || payLoading" @click="submitPayment">
               {{ payLoading ? 'Submitting…' : '✅ I\'ve Paid — Confirm' }}
             </button>
-            <p class="mm-back" @click="vipStep = 2">← Back</p>
+            <p class="mm-back" @click="vipStep = 'secret'">← Back</p>
           </template>
 
-          <!-- ── STEP 4: Submitted ── -->
-          <template v-else-if="vipStep === 4">
+          <!-- ── STEP 6 (submitted): Submitted ── -->
+          <template v-else-if="vipStep === 'submitted'">
             <div class="mm-icon">⏳</div>
             <h3 class="mm-title">PAYMENT <span class="gold-text">SUBMITTED</span></h3>
             <p class="mm-sub">Your payment is being verified by our team.<br/>You'll get your betslip once confirmed.</p>
             <div class="pending-box">
-              <div class="pending-row"><span>Plan</span><strong>{{ selectedPlan === 'daily' ? 'Daily' : 'Weekly' }}</strong></div>
+              <div class="pending-row"><span>Package</span><strong>{{ selectedOdds }} Odds — {{ selectedPlan === 'daily' ? 'Daily' : 'Weekly' }}</strong></div>
               <div class="pending-row"><span>Amount</span><strong>{{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</strong></div>
               <div class="pending-row"><span>Provider</span><strong>{{ selectedProvider ? selectedProvider.toUpperCase() : '' }}</strong></div>
               <div class="pending-row"><span>Status</span><span class="status-pending">Pending</span></div>
             </div>
 
-            <!-- Late proof upload (shown only if no proof was uploaded in step 3) -->
+            <!-- Late proof upload (shown only if no proof was uploaded in payment step) -->
             <div v-if="!proofFile && submittedSubId" class="proof-upload-block late-proof">
               <div class="proof-upload-label">📎 Still want to speed up verification? Upload your payment screenshot:</div>
               <label class="proof-file-btn">
@@ -359,7 +403,7 @@
               </div>
               <div class="field">
                 <label>Secret Code <span style="color:#666;font-weight:400;text-transform:none">(generated at registration)</span></label>
-                <input v-model="statusSecretCode" type="text" placeholder="XXXX-XXXX-XXXX" style="letter-spacing:2px;font-family:monospace" />
+                <input v-model="statusSecretCode" type="text" placeholder="Enter secret code" style="letter-spacing:2px;font-family:monospace" />
               </div>
               <p v-if="statusError" class="reg-error">{{ statusError }}</p>
               <button type="submit" class="mm-next-btn" :disabled="statusLoading">
@@ -413,6 +457,7 @@
 
 <script>
 import axios from 'axios'
+import { getUser, isLoggedIn } from '../utils/userAuth'
 
 const STATIC_PICKS = [
   {
@@ -465,7 +510,8 @@ export default {
       // VIP modal
       showVipMenu: false,
       vipStep: 1,
-      vipCfg: { daily_price: 5000, weekly_price: 20000, currency: 'UGX', mtn_number: '', airtel_number: '', whatsapp_link: '' },
+      vipCfg: { currency: 'UGX', mtn_number: '', airtel_number: '', whatsapp_link: '' },
+      selectedOdds: '',
       selectedPlan: 'weekly',
       selectedProvider: '',
       // Registration / Login
@@ -513,10 +559,21 @@ export default {
     }
   },
   computed: {
+    PRICE_DEFAULTS() {
+      return {
+        'odds_1_5_weekly_price': 45000,
+        'odds_2_daily_price':    10000,
+        'odds_2_weekly_price':   45000,
+        'odds_5_daily_price':    15000,
+        'odds_5_weekly_price':   55000
+      }
+    },
+    availablePeriods() {
+      if (this.selectedOdds === '1.5') return ['weekly']
+      return ['daily', 'weekly']
+    },
     selectedPlanAmount() {
-      return this.selectedPlan === 'daily'
-        ? (this.vipCfg.daily_price || 5000)
-        : (this.vipCfg.weekly_price || 20000)
+      return this.packageAmount(this.selectedPlan)
     }
   },
   async mounted() {
@@ -524,10 +581,16 @@ export default {
     this._pollInterval = setInterval(this.fetchTips, 30000)
     this._onVisible = () => { if (!document.hidden) this.fetchTips() }
     document.addEventListener('visibilitychange', this._onVisible)
+    this._onLogout  = () => this.handleForcedLogout()
+    this._onKeyDown = (e) => { if (e.key === 'Escape' && this.showVipMenu) this.closeVip() }
+    window.addEventListener('user-logged-out', this._onLogout)
+    document.addEventListener('keydown', this._onKeyDown)
   },
   beforeUnmount() {
     clearInterval(this._pollInterval)
     document.removeEventListener('visibilitychange', this._onVisible)
+    window.removeEventListener('user-logged-out', this._onLogout)
+    document.removeEventListener('keydown', this._onKeyDown)
   },
   methods: {
     async fetchTips() {
@@ -542,12 +605,57 @@ export default {
         if (data) this.vipCfg = { ...this.vipCfg, ...data }
       } catch { /* use defaults */ }
     },
+    handleForcedLogout() {
+      // User logged out via top-right button — clear auth state from VIP modal immediately
+      this.regUser       = null
+      this.generatedCode = ''
+      const sensitiveSteps = ['secret', 'payment', 'submitted']
+      if (sensitiveSteps.includes(this.vipStep)) {
+        // 'submitted' means payment was already sent — just close the modal
+        // For secret/payment, drop back to the auth step so the code is never visible
+        if (this.vipStep === 'submitted') {
+          this.showVipMenu = false
+        } else {
+          this.vipStep = 3
+        }
+      }
+    },
     openVipMenu() {
+      // If user is already logged in from the home page, pre-fill their account
+      if (isLoggedIn()) {
+        const stored = getUser()
+        if (stored) this.regUser = stored
+      }
+      this.selectedOdds = ''
+      this.selectedPlan = 'weekly'
       this.vipStep = 1
       this.showVipMenu = true
     },
     closeVip() {
       this.showVipMenu = false
+    },
+    packageAmount(period) {
+      const odds = this.selectedOdds || '2'
+      const key  = `odds_${odds.replace('.', '_')}_${period}_price`
+      return parseFloat(this.vipCfg[key] || this.PRICE_DEFAULTS[key] || 0)
+    },
+    goToPeriodStep() {
+      if (!this.selectedOdds) return
+      // 1.5 odds only has weekly — auto-select and skip period step
+      if (this.selectedOdds === '1.5') {
+        this.selectedPlan = 'weekly'
+        this.goToAuthStep()
+        return
+      }
+      this.vipStep = 2
+    },
+    goToAuthStep() {
+      // Skip auth step entirely if already logged in
+      if (this.regUser) {
+        this.toSecretStep()
+      } else {
+        this.vipStep = 3
+      }
     },
     async registerUser() {
       if (this.regForm.password !== this.regForm.confirmPassword) {
@@ -575,21 +683,22 @@ export default {
       this.regLoading = true
       this.regError = ''
       try {
-        const { data } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.lookupPhone))
-        this.regUser = data
+        const { data } = await axios.post('/api/users/login', {
+          phone: this.loginForm.phone,
+          password: this.loginForm.password
+        })
+        this.regUser = data.user || data
         this.toSecretStep()
-      } catch {
-        this.regError = 'Phone number not found. Please register as a new user.'
+      } catch (err) {
+        this.regError = err.response?.data?.error || 'Login failed. Please check your phone and password.'
       } finally {
         this.regLoading = false
       }
     },
     generateSecretCode() {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-      const arr = new Uint8Array(12)
+      const arr = new Uint8Array(6)
       crypto.getRandomValues(arr)
-      const raw = Array.from(arr, b => chars[b % chars.length]).join('')
-      return raw.slice(0, 4) + '-' + raw.slice(4, 8) + '-' + raw.slice(8, 12)
+      return Array.from(arr, b => b % 10).join('')
     },
     toSecretStep() {
       this.generatedCode = this.generateSecretCode()
@@ -627,12 +736,13 @@ export default {
         formData.append('paymentMethod', this.selectedProvider)
         formData.append('phone', phone)
         if (this.generatedCode) formData.append('secretCode', this.generatedCode)
+        formData.append('oddsType', this.selectedOdds || '2')
         if (this.proofFile) formData.append('proof', this.proofFile)
         const { data } = await axios.post('/api/subscriptions', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
         this.submittedSubId = data.subscription?.id || data.id || null
-        this.vipStep = 4
+        this.vipStep = 'submitted'
       } catch (err) {
         this.payError = err.response?.data?.error || 'Submission failed. Please try again.'
       } finally {
@@ -1185,5 +1295,35 @@ export default {
   line-height: 1.6;
   text-align: left;
   margin-bottom: 8px;
+}
+
+/* ── Odds Category Cards (Step 1) ── */
+.odds-cards { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+.odds-card {
+  flex: 1; max-width: 130px; padding: 16px 10px;
+  background: var(--dark-3, #1a1a1a);
+  border: 2px solid rgba(255,255,255,0.09);
+  border-radius: 14px; cursor: pointer; text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+.odds-card.selected { border-color: var(--gold, #FFD700); background: rgba(255,215,0,0.07); }
+.odds-card:not(.selected):hover { border-color: rgba(255,215,0,0.35); }
+.odds-card.odds-popular { border-color: rgba(255,215,0,0.25); }
+.odds-value { font-size: 32px; font-weight: 900; color: var(--gold, #FFD700); line-height: 1.1; }
+.odds-label { font-size: 9px; font-weight: 800; letter-spacing: 2px; color: var(--text-muted, #888); text-transform: uppercase; margin-bottom: 8px; }
+.odds-desc  { font-size: 10px; color: var(--text-muted, #888); line-height: 1.4; margin-bottom: 6px; }
+.odds-badge { font-size: 9px; font-weight: 700; color: var(--text-muted, #666); letter-spacing: 0.5px; }
+.weekly-only-badge { color: #4fc3f7; }
+.odds-hot-badge {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  background: var(--gold, #FFD700); color: var(--dark, #0a0a0a);
+  font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 10px;
+  letter-spacing: 1px; white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .odds-cards { gap: 8px; }
+  .odds-card  { max-width: none; padding: 14px 8px; }
+  .odds-value { font-size: 26px; }
 }
 </style>
