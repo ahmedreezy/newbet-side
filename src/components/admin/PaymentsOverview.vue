@@ -1,27 +1,37 @@
 <template>
   <div class="editor">
     <p class="editor-desc">
-      Review payment submissions and confirm access. Daily (5,000 UGX / 24h) and Weekly (20,000 UGX / 7 days) members are shown in separate tabs with unique betslip codes per tier.
+      Review payment submissions and confirm access. Subscriptions are separated by Daily and Weekly tiers, and further by odds package (1.5, 2, or 5 Odds) with individual betslip codes per package.
     </p>
 
     <!-- Tier tabs -->
     <div class="tier-tabs">
       <button
         :class="['tier-tab', 'daily-tab', { active: activeTier === 'daily' }]"
-        @click="activeTier = 'daily'"
+        @click="activeTier = 'daily'; filterOdds = 'all'"
       >
         <span class="tier-dot daily-dot"></span>
-        Daily — 5k
+        Daily
         <span class="tier-count">{{ countByTier('daily') }}</span>
       </button>
       <button
         :class="['tier-tab', 'weekly-tab', { active: activeTier === 'weekly' }]"
-        @click="activeTier = 'weekly'"
+        @click="activeTier = 'weekly'; filterOdds = 'all'"
       >
         <span class="tier-dot weekly-dot"></span>
-        Weekly — 20k
+        Weekly
         <span class="tier-count">{{ countByTier('weekly') }}</span>
       </button>
+    </div>
+
+    <!-- Odds sub-filter chips -->
+    <div class="odds-filter-row">
+      <button
+        v-for="chip in oddsChips"
+        :key="chip.val"
+        :class="['odds-chip', { active: filterOdds === chip.val }]"
+        @click="filterOdds = chip.val"
+      >{{ chip.label }} <span class="count">{{ countByOdds(chip.val) }}</span></button>
     </div>
 
     <!-- Status filter toolbar -->
@@ -35,7 +45,7 @@
     </div>
 
     <div v-if="loading" class="state-msg">Loading&hellip;</div>
-    <div v-else-if="displayed.length === 0" class="empty-state">No {{ filterStatus !== 'all' ? filterStatus : '' }} records for {{ activeTier }} tier.</div>
+    <div v-else-if="displayed.length === 0" class="empty-state">No {{ filterStatus !== 'all' ? filterStatus : '' }} records for {{ activeTier }}{{ filterOdds !== 'all' ? ' · ' + filterOdds + ' odds' : '' }}.</div>
 
     <div v-else class="sub-list">
       <div
@@ -45,8 +55,11 @@
         :ref="'card-' + s.id"
       >
         <!-- Tier ribbon -->
-        <div :class="['tier-ribbon', s.planType + '-ribbon']">
-          {{ s.planType === 'daily' ? 'DAILY 5K' : 'WEEKLY 20K' }}
+        <div class="tier-ribbon-row">
+          <div :class="['tier-ribbon', s.planType + '-ribbon']">
+            {{ s.planType === 'daily' ? 'DAILY' : 'WEEKLY' }}
+          </div>
+          <div class="odds-ribbon">{{ s.oddsType || '2' }} ODDS</div>
         </div>
 
         <div class="sub-top">
@@ -154,17 +167,7 @@
       <h3 class="vc-title">VIP Payment Settings</h3>
       <div v-if="cfgLoading" class="state-msg">Loading config&hellip;</div>
       <form v-else @submit.prevent="saveConfig" class="cfg-form">
-        <div class="cfg-section-label">&#128176; Pricing &amp; Payment Numbers</div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>Daily Price (UGX)</label>
-            <input v-model.number="cfg.daily_price" type="number" min="0" />
-          </div>
-          <div class="cfg-field">
-            <label>Weekly Price (UGX)</label>
-            <input v-model.number="cfg.weekly_price" type="number" min="0" />
-          </div>
-        </div>
+        <div class="cfg-section-label">&#128176; Payment Numbers</div>
         <div class="cfg-row">
           <div class="cfg-field">
             <label>MTN Number</label>
@@ -176,27 +179,98 @@
           </div>
         </div>
 
-        <div class="cfg-section-label daily-label">&#128309; Daily Tier &mdash; Default Betslip</div>
+        <!-- ── 1.5 Odds Weekly ── -->
+        <div class="cfg-section-label pkg-label pkg-1-5">&#9670; 1.5 Odds &mdash; Weekly</div>
         <div class="cfg-row">
           <div class="cfg-field">
-            <label>Daily Betslip Link</label>
-            <input v-model="cfg.daily_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
+            <label>Price (UGX)</label>
+            <input v-model.number="cfg.odds_1_5_weekly_price" type="number" min="0" placeholder="45000" />
           </div>
           <div class="cfg-field">
-            <label>Daily Betslip Code</label>
-            <input v-model="cfg.daily_betslip_code" type="text" placeholder="e.g. DAILY25" />
+            <label>Betslip Code</label>
+            <input v-model="cfg.odds_1_5_weekly_betslip_code" type="text" placeholder="e.g. W15CODE" />
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-field cfg-field-full">
+            <label>Betslip Link</label>
+            <input v-model="cfg.odds_1_5_weekly_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
           </div>
         </div>
 
-        <div class="cfg-section-label weekly-label">&#128993; Weekly Tier &mdash; Default Betslip</div>
+        <!-- ── 2 Odds Daily ── -->
+        <div class="cfg-section-label pkg-label pkg-2 daily-label">&#9670; 2 Odds &mdash; Daily</div>
         <div class="cfg-row">
           <div class="cfg-field">
-            <label>Weekly Betslip Link</label>
-            <input v-model="cfg.weekly_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
+            <label>Price (UGX)</label>
+            <input v-model.number="cfg.odds_2_daily_price" type="number" min="0" placeholder="10000" />
           </div>
           <div class="cfg-field">
-            <label>Weekly Betslip Code</label>
-            <input v-model="cfg.weekly_betslip_code" type="text" placeholder="e.g. WEEKLY25" />
+            <label>Betslip Code</label>
+            <input v-model="cfg.odds_2_daily_betslip_code" type="text" placeholder="e.g. D2CODE" />
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-field cfg-field-full">
+            <label>Betslip Link</label>
+            <input v-model="cfg.odds_2_daily_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
+          </div>
+        </div>
+
+        <!-- ── 2 Odds Weekly ── -->
+        <div class="cfg-section-label pkg-label pkg-2 weekly-label">&#9670; 2 Odds &mdash; Weekly</div>
+        <div class="cfg-row">
+          <div class="cfg-field">
+            <label>Price (UGX)</label>
+            <input v-model.number="cfg.odds_2_weekly_price" type="number" min="0" placeholder="45000" />
+          </div>
+          <div class="cfg-field">
+            <label>Betslip Code</label>
+            <input v-model="cfg.odds_2_weekly_betslip_code" type="text" placeholder="e.g. W2CODE" />
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-field cfg-field-full">
+            <label>Betslip Link</label>
+            <input v-model="cfg.odds_2_weekly_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
+          </div>
+        </div>
+
+        <!-- ── 5 Odds Daily ── -->
+        <div class="cfg-section-label pkg-label pkg-5 daily-label">&#9670; 5 Odds &mdash; Daily</div>
+        <div class="cfg-row">
+          <div class="cfg-field">
+            <label>Price (UGX)</label>
+            <input v-model.number="cfg.odds_5_daily_price" type="number" min="0" placeholder="15000" />
+          </div>
+          <div class="cfg-field">
+            <label>Betslip Code</label>
+            <input v-model="cfg.odds_5_daily_betslip_code" type="text" placeholder="e.g. D5CODE" />
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-field cfg-field-full">
+            <label>Betslip Link</label>
+            <input v-model="cfg.odds_5_daily_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
+          </div>
+        </div>
+
+        <!-- ── 5 Odds Weekly ── -->
+        <div class="cfg-section-label pkg-label pkg-5 weekly-label">&#9670; 5 Odds &mdash; Weekly</div>
+        <div class="cfg-row">
+          <div class="cfg-field">
+            <label>Price (UGX)</label>
+            <input v-model.number="cfg.odds_5_weekly_price" type="number" min="0" placeholder="55000" />
+          </div>
+          <div class="cfg-field">
+            <label>Betslip Code</label>
+            <input v-model="cfg.odds_5_weekly_betslip_code" type="text" placeholder="e.g. W5CODE" />
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-field cfg-field-full">
+            <label>Betslip Link</label>
+            <input v-model="cfg.odds_5_weekly_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
           </div>
         </div>
 
@@ -237,6 +311,7 @@ export default {
       loading: true,
       activeTier: 'daily',
       filterStatus: 'all',
+      filterOdds: 'all',
       filters: [
         { val: 'all',      label: 'All' },
         { val: 'pending',  label: 'Pending' },
@@ -264,9 +339,16 @@ export default {
     tierSubs() {
       return this.subscriptions.filter(s => s.planType === this.activeTier)
     },
+    oddsChips() {
+      const daily   = [{ val: 'all', label: 'All' }, { val: '2', label: '2 Odds' }, { val: '5', label: '5 Odds' }]
+      const weekly  = [{ val: 'all', label: 'All' }, { val: '1.5', label: '1.5 Odds' }, { val: '2', label: '2 Odds' }, { val: '5', label: '5 Odds' }]
+      return this.activeTier === 'daily' ? daily : weekly
+    },
     displayed() {
-      if (this.filterStatus === 'all') return this.tierSubs
-      return this.tierSubs.filter(s => s.status === this.filterStatus)
+      let subs = this.tierSubs
+      if (this.filterOdds !== 'all') subs = subs.filter(s => (s.oddsType || '2') === this.filterOdds)
+      if (this.filterStatus !== 'all') subs = subs.filter(s => s.status === this.filterStatus)
+      return subs
     }
   },
   watch: {
@@ -313,6 +395,10 @@ export default {
       if (val === 'all') return this.tierSubs.length
       return this.tierSubs.filter(s => s.status === val).length
     },
+    countByOdds(val) {
+      if (val === 'all') return this.tierSubs.length
+      return this.tierSubs.filter(s => (s.oddsType || '2') === val).length
+    },
     formatDate(ts) {
       if (!ts) return '\u2014'
       return new Date(ts).toLocaleDateString('en-GB', {
@@ -323,7 +409,8 @@ export default {
     focusOnSub(id) {
       const sub = this.subscriptions.find(s => s.id === id)
       if (!sub) return
-      this.activeTier = sub.planType || 'daily'
+      this.activeTier   = sub.planType || 'daily'
+      this.filterOdds   = 'all'
       this.filterStatus = 'all'
       this.highlightId = id
       this.$nextTick(() => {
@@ -559,4 +646,21 @@ export default {
   .sub-top { flex-direction: column; }
   .tier-tabs { flex-direction: column; }
 }
+
+/* Odds sub-filter chips */
+.odds-filter-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px; }
+.odds-chip { background: #111; border: 1px solid rgba(255,255,255,0.08); color: #888; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 16px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 5px; }
+.odds-chip.active { border-color: #a78bfa; color: #a78bfa; background: rgba(167,139,250,0.08); }
+.odds-chip .count { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 8px; font-size: 10px; }
+
+/* Tier ribbon row */
+.tier-ribbon-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.odds-ribbon { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; padding: 3px 10px; border-radius: 8px; background: rgba(167,139,250,0.12); color: #a78bfa; }
+
+/* Package config labels */
+.pkg-label { margin-top: 16px; }
+.pkg-1-5 { color: #4fc3f7; }
+.pkg-2   { color: var(--gold, #FFD700); }
+.pkg-5   { color: #ff7043; }
+.cfg-field-full { grid-column: 1 / -1; }
 </style>

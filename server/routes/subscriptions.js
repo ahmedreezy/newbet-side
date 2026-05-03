@@ -27,6 +27,7 @@ function rowToSub(row, isAdmin = false) {
     id:              row.id,
     userId:          row.user_id,
     planType:        row.plan_type,
+    oddsType:        row.odds_type || '2',
     paymentMethod:   row.payment_method,
     phone:           row.phone,
     amount:          parseFloat(row.amount),
@@ -91,7 +92,7 @@ router.get('/user/:userId', async (req, res) => {
 
 // POST create a subscription request with optional proof image
 router.post('/', upload.single('proof'), async (req, res) => {
-  const { userId, planType, paymentMethod, phone, secretCode } = req.body
+  const { userId, planType, paymentMethod, phone, secretCode, oddsType } = req.body
   const cleanup = () => { if (req.file) try { fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename)) } catch {} }
 
   if (!userId || !planType || !paymentMethod) {
@@ -103,22 +104,39 @@ router.post('/', upload.single('proof'), async (req, res) => {
   if (!['mtn', 'airtel'].includes(paymentMethod)) {
     cleanup(); return res.status(400).json({ error: 'paymentMethod must be mtn or airtel' })
   }
+
+  // Validate oddsType + planType combination
+  const VALID_COMBOS = { '1.5': ['weekly'], '2': ['daily', 'weekly'], '5': ['daily', 'weekly'] }
+  const resolvedOdds = oddsType || '2'
+  if (!VALID_COMBOS[resolvedOdds] || !VALID_COMBOS[resolvedOdds].includes(planType)) {
+    cleanup(); return res.status(400).json({ error: `Invalid combination: ${resolvedOdds} odds is not available for ${planType} plan` })
+  }
+
+  const PRICE_DEFAULTS = {
+    'odds_1_5_weekly_price': 45000,
+    'odds_2_daily_price':    10000,
+    'odds_2_weekly_price':   45000,
+    'odds_5_daily_price':    15000,
+    'odds_5_weekly_price':   55000
+  }
+  const oddsKey = `odds_${resolvedOdds.replace('.', '_')}_${planType}_price`
+
   try {
     const { rows: cfgRows } = await pool.query(
-      `SELECT key, value FROM vip_config WHERE key IN ('daily_price','weekly_price')`
+      `SELECT key, value FROM vip_config WHERE key = $1`, [oddsKey]
     )
     const cfg    = Object.fromEntries(cfgRows.map(r => [r.key, r.value]))
-    const amount = planType === 'daily' ? parseFloat(cfg.daily_price || 5000) : parseFloat(cfg.weekly_price || 20000)
+    const amount = parseFloat(cfg[oddsKey] || PRICE_DEFAULTS[oddsKey] || 10000)
     const proofUrl = req.file ? `/uploads/${req.file.filename}` : null
 
     // Hash the secret code if provided
     const secretCodeHash = secretCode ? await bcrypt.hash(secretCode, 10) : ''
 
     const { rows: [sub] } = await pool.query(`
-      INSERT INTO subscriptions (user_id, plan_type, payment_method, phone, amount, status, proof_url, secret_code_hash)
-      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
+      INSERT INTO subscriptions (user_id, plan_type, odds_type, payment_method, phone, amount, status, proof_url, secret_code_hash)
+      VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
       RETURNING *
-    `, [parseInt(userId), planType, paymentMethod, phone || '', amount, proofUrl, secretCodeHash])
+    `, [parseInt(userId), planType, resolvedOdds, paymentMethod, phone || '', amount, proofUrl, secretCodeHash])
 
     const { rows: [payment] } = await pool.query(`
       INSERT INTO payments (subscription_id, user_id, amount, plan_type, payment_method, phone, status)
@@ -212,9 +230,10 @@ router.patch('/:id', auth, async (req, res) => {
     const sub = rows[0]
 
     if (status === 'active' && !sub.started_at) {
-      // Activating: set started_at, expires_at, copy tier-specific betslip if not provided
-      const tierLinkKey = sub.plan_type === 'daily' ? 'daily_betslip_link' : 'weekly_betslip_link'
-      const tierCodeKey = sub.plan_type === 'daily' ? 'daily_betslip_code' : 'weekly_betslip_code'
+      // Activating: set started_at, expires_at, copy per-package betslip if not provided
+      const oddsKey    = (sub.odds_type || '2').replace('.', '_')
+      const tierLinkKey = `odds_${oddsKey}_${sub.plan_type}_betslip_link`
+      const tierCodeKey = `odds_${oddsKey}_${sub.plan_type}_betslip_code`
       const { rows: cfgRows } = await pool.query(
         `SELECT key, value FROM vip_config WHERE key IN ('current_betslip_link','current_betslip_code',$1,$2)`,
         [tierLinkKey, tierCodeKey]

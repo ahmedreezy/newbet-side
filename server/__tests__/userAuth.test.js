@@ -132,3 +132,41 @@ describe('isLoggedIn()', () => {
     expect(isLoggedIn()).toBe(false)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Unified login flow — VIP modal auth-skip behaviour
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Unified login flow (auth-skip logic)', () => {
+  test('isLoggedIn() returns true enables getUser() to pre-fill auth step', () => {
+    saveUser(MOCK_USER, MOCK_TOKEN)
+    // Simulate FeaturedSection.vue openVipMenu() logic:
+    // if (isLoggedIn()) { regUser = getUser() }
+    const shouldSkipAuthStep = isLoggedIn()
+    const prefilledUser = shouldSkipAuthStep ? getUser() : null
+    expect(shouldSkipAuthStep).toBe(true)
+    expect(prefilledUser).toEqual(MOCK_USER)
+  })
+
+  test('when user is NOT logged in, auth step is shown (not skipped)', () => {
+    // localStorage is empty (cleared in beforeEach)
+    const shouldSkipAuthStep = isLoggedIn()
+    const prefilledUser = shouldSkipAuthStep ? getUser() : null
+    expect(shouldSkipAuthStep).toBe(false)
+    expect(prefilledUser).toBeNull()
+  })
+
+  test('getUser() returns full user object including phone for pre-fill', () => {
+    const userWithPhone = { id: 5, username: 'Bob', phone: '0780000002' }
+    saveUser(userWithPhone, MOCK_TOKEN)
+    const u = getUser()
+    expect(u.phone).toBe('0780000002')
+    expect(u.username).toBe('Bob')
+  })
+
+  test('clearUser() after logout means next modal open will show auth step', () => {
+    saveUser(MOCK_USER, MOCK_TOKEN)
+    clearUser() // user logs out
+    expect(isLoggedIn()).toBe(false)
+    expect(getUser()).toBeNull()
+  })
+})
