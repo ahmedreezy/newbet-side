@@ -56,6 +56,25 @@
         <div class="today-date-badge">{{ todayFormatted }}</div>
       </div>
 
+      <!-- VIP betslip box shown when user has an active subscription -->
+      <div v-if="userActiveSub" class="vip-betslip-banner">
+        <div class="vip-betslip-header">✅ VIP ACTIVE — Expires {{ formatExpiry(userActiveSub.expiresAt) }}</div>
+        <div v-if="userActiveSub.betslipLink" class="betslip-section">
+          <div class="betslip-label">🔗 Betslip Link</div>
+          <a :href="userActiveSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ userActiveSub.betslipLink }}</a>
+        </div>
+        <div v-if="userActiveSub.betslipCode" class="betslip-section">
+          <div class="betslip-label">🎫 Betslip Code</div>
+          <div class="betslip-code-row">
+            <code class="betslip-code">{{ userActiveSub.betslipCode }}</code>
+            <button class="copy-btn" @click="copyCode(userActiveSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+          </div>
+        </div>
+        <div v-if="!userActiveSub.betslipLink && !userActiveSub.betslipCode" class="betslip-pending-note">
+          ⏳ Betslip will appear here once admin activates your subscription.
+        </div>
+      </div>
+
       <div class="picks-grid">
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
           <!-- Full-width image -->
@@ -82,8 +101,12 @@
                 <div class="pick-prob-fill" :style="{ width: pick.winProb + '%' }"></div>
               </div>
             </div>
-            <!-- Locked tip -->
-            <div class="pick-locked-row">
+            <!-- Locked tip OR revealed prediction for active VIP -->
+            <div v-if="userActiveSub" class="pick-revealed-row">
+              <span class="unlock-icon" aria-hidden="true">🔓</span>
+              <div class="pick-tip-text">{{ pick.prediction || 'Tip available — check betslip below' }}</div>
+            </div>
+            <div v-else class="pick-locked-row">
               <span class="lock-icon" aria-hidden="true">🔒</span>
               <div class="lock-text-wrap">
                 <span class="lock-text">Expert tip hidden</span>
@@ -97,9 +120,10 @@
                 </svg>
                 {{ pick.kickoff }}
               </div>
-              <button class="pick-vip-btn" @click="openVipMenu">
+              <button v-if="!userActiveSub" class="pick-vip-btn" @click="openVipMenu">
                 👑 Join VIP
               </button>
+              <span v-else class="pick-vip-active-tag">👑 VIP</span>
             </div>
           </div>
         </div>
@@ -283,26 +307,7 @@
             <p class="mm-back" @click="vipStep = 2">← Back</p>
           </template>
 
-          <!-- ── STEP 4 (secret): Secret Code Display ── -->
-          <template v-else-if="vipStep === 'secret'">
-            <div class="mm-icon">🔐</div>
-            <h3 class="mm-title">YOUR <span class="gold-text">SECRET CODE</span></h3>
-            <p class="mm-sub">Save this code somewhere safe — you'll need it to access your VIP tips.<br/>It cannot be recovered if lost.</p>
-            <div class="secret-code-box">
-              <div class="secret-code-label">🔑 Your Unique Access Code</div>
-              <div class="secret-code-display">{{ generatedCode }}</div>
-              <button class="copy-btn secret-copy-btn" @click="copySecretCode">
-                {{ secretCopied ? '✓ Copied!' : 'Copy Code' }}
-              </button>
-            </div>
-            <div class="secret-warning">
-              ⚠️ This code is shown <strong>only once</strong>. Write it down or screenshot it now. You will need it every time you check your VIP status.
-            </div>
-            <button class="mm-next-btn" @click="vipStep = 'payment'">I've saved it — Continue to Payment →</button>
-            <p class="mm-back" @click="vipStep = 3">← Back</p>
-          </template>
-
-          <!-- ── STEP 5 (payment): Payment Method ── -->
+          <!-- ── STEP 4 (payment): Payment Method ── -->
           <template v-else-if="vipStep === 'payment'">
             <div class="mm-icon">📱</div>
             <h3 class="mm-title">PAY VIA <span class="gold-text">MOBILE MONEY</span></h3>
@@ -358,10 +363,10 @@
             <button class="mm-next-btn" :disabled="!selectedProvider || payLoading" @click="submitPayment">
               {{ payLoading ? 'Submitting…' : '✅ I\'ve Paid — Confirm' }}
             </button>
-            <p class="mm-back" @click="vipStep = 'secret'">← Back</p>
+            <p class="mm-back" @click="vipStep = 3">← Back</p>
           </template>
 
-          <!-- ── STEP 6 (submitted): Submitted ── -->
+          <!-- ── STEP 5 (submitted): Submitted ── -->
           <template v-else-if="vipStep === 'submitted'">
             <div class="mm-icon">⏳</div>
             <h3 class="mm-title">PAYMENT <span class="gold-text">SUBMITTED</span></h3>
@@ -400,10 +405,6 @@
               <div class="field">
                 <label>Your Phone Number</label>
                 <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
-              </div>
-              <div class="field">
-                <label>Secret Code <span style="color:#666;font-weight:400;text-transform:none">(generated at registration)</span></label>
-                <input v-model="statusSecretCode" type="text" placeholder="Enter secret code" style="letter-spacing:2px;font-family:monospace" />
               </div>
               <p v-if="statusError" class="reg-error">{{ statusError }}</p>
               <button type="submit" class="mm-next-btn" :disabled="statusLoading">
@@ -525,6 +526,8 @@ export default {
       // Secret code
       generatedCode: '',
       secretCopied: false,
+      // Active VIP subscription for logged-in user
+      userActiveSub: null,
       // Payment
       payError: '',
       payLoading: false,
@@ -578,6 +581,7 @@ export default {
   },
   async mounted() {
     await Promise.all([this.fetchTips(), this.fetchVipConfig()])
+    if (isLoggedIn()) this.fetchUserActiveSub()
     this._pollInterval = setInterval(this.fetchTips, 30000)
     this._onVisible = () => { if (!document.hidden) this.fetchTips() }
     document.addEventListener('visibilitychange', this._onVisible)
@@ -593,6 +597,14 @@ export default {
     document.removeEventListener('keydown', this._onKeyDown)
   },
   methods: {
+    async fetchUserActiveSub() {
+      try {
+        const user = getUser()
+        if (!user || !user.id) return
+        const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
+        this.userActiveSub = subs.find(s => s.status === 'active') || null
+      } catch { /* ignore */ }
+    },
     async fetchTips() {
       try {
         const { data } = await axios.get('/api/football-tips')
@@ -609,7 +621,7 @@ export default {
       // User logged out via top-right button — clear auth state from VIP modal immediately
       this.regUser       = null
       this.generatedCode = ''
-      const sensitiveSteps = ['secret', 'payment', 'submitted']
+      const sensitiveSteps = ['payment', 'submitted']
       if (sensitiveSteps.includes(this.vipStep)) {
         // 'submitted' means payment was already sent — just close the modal
         // For secret/payment, drop back to the auth step so the code is never visible
@@ -624,7 +636,10 @@ export default {
       // If user is already logged in from the home page, pre-fill their account
       if (isLoggedIn()) {
         const stored = getUser()
-        if (stored) this.regUser = stored
+        if (stored) {
+          this.regUser = stored
+          this.statusPhone = stored.phone || ''
+        }
       }
       this.selectedOdds = ''
       this.selectedPlan = 'weekly'
@@ -701,9 +716,8 @@ export default {
       return Array.from(arr, b => b % 10).join('')
     },
     toSecretStep() {
-      this.generatedCode = this.generateSecretCode()
-      this.secretCopied = false
-      this.vipStep = 'secret'
+      // Secret code step removed — go straight to payment
+      this.vipStep = 'payment'
     },
     async copySecretCode() {
       try {
@@ -735,7 +749,6 @@ export default {
         formData.append('planType', this.selectedPlan)
         formData.append('paymentMethod', this.selectedProvider)
         formData.append('phone', phone)
-        if (this.generatedCode) formData.append('secretCode', this.generatedCode)
         formData.append('oddsType', this.selectedOdds || '2')
         if (this.proofFile) formData.append('proof', this.proofFile)
         const { data } = await axios.post('/api/subscriptions', formData, {
@@ -774,21 +787,31 @@ export default {
       this.activeSub = null
       this.pendingStatusMsg = ''
       try {
+        // If user is logged in, look up by userId directly
+        const loggedInUser = isLoggedIn() ? (this.regUser || getUser()) : null
+        if (loggedInUser && loggedInUser.id) {
+          const { data: subs } = await axios.get('/api/subscriptions/user/' + loggedInUser.id)
+          const active = subs.find(s => s.status === 'active')
+          if (active) {
+            this.activeSub = active
+          } else {
+            const pending = subs.find(s => s.status === 'pending')
+            this.pendingStatusMsg = pending
+              ? '⏳ Payment pending — our team is verifying. Check back soon.'
+              : 'No active subscription found for this account.'
+          }
+          this.statusChecked = true
+          return
+        }
+        // Fallback: look up by phone (no secret code required for new subs)
         const { data: sub } = await axios.post('/api/subscriptions/verify-access', {
-          phone: this.statusPhone,
-          secretCode: this.statusSecretCode || undefined
+          phone: this.statusPhone
         })
         this.activeSub = sub
         this.statusChecked = true
       } catch (verifyErr) {
         const status = verifyErr.response?.status
-        const msg = verifyErr.response?.data?.error || ''
-        if (status === 403) {
-          this.statusError = msg === 'Secret code required'
-            ? 'Please enter your secret code to access your VIP details.'
-            : '❌ Phone number or secret code is incorrect. Both must match.'
-        } else if (status === 404) {
-          // Active sub not found — check for pending without exposing betslip
+        if (status === 404) {
           try {
             const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
             const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
@@ -1036,6 +1059,53 @@ export default {
   animation: vipBeep 1.6s ease-out infinite;
 }
 .pick-vip-btn:hover { opacity: 0.88; transform: scale(1.04); }
+
+/* VIP active tag (replaces Join VIP button when user has active sub) */
+.pick-vip-active-tag {
+  background: linear-gradient(135deg, #1a7a1a, #2eb82e);
+  color: #fff;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Revealed tip row (replaces lock row for active VIP) */
+.pick-revealed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(46, 184, 46, 0.08);
+  border: 1px solid rgba(46, 184, 46, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.unlock-icon { font-size: 16px; flex-shrink: 0; }
+.pick-tip-text { font-size: 13px; color: var(--text); font-weight: 600; line-height: 1.4; }
+
+/* VIP betslip banner above picks */
+.vip-betslip-banner {
+  background: linear-gradient(135deg, rgba(26,122,26,0.15), rgba(46,184,46,0.08));
+  border: 1px solid rgba(46,184,46,0.35);
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin-bottom: 28px;
+}
+.vip-betslip-header {
+  font-size: 13px;
+  font-weight: 800;
+  color: #2eb82e;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.betslip-pending-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 8px 0;
+}
 
 .pick-footer {
   display: flex;
