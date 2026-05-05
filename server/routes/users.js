@@ -5,6 +5,16 @@ const router   = express.Router()
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
 
+function getJwtSecret(res) {
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set')
+    res.status(500).json({ error: 'Server configuration error' })
+    return null
+  }
+
+  return process.env.JWT_SECRET
+}
+
 function rowToUser(row) {
   return {
     id:        row.id,
@@ -63,6 +73,10 @@ router.post('/', async (req, res) => {
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' })
   }
+
+  const jwtSecret = getJwtSecret(res)
+  if (!jwtSecret) return
+
   try {
     const passwordHash = await bcrypt.hash(password, 12)
     const { rows } = await pool.query(`
@@ -73,7 +87,7 @@ router.post('/', async (req, res) => {
     const user = rowToUser(rows[0])
     const token = jwt.sign(
       { id: user.id, username: user.username, role: 'user' },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     )
     res.status(201).json({ ...user, token })
@@ -92,6 +106,10 @@ router.post('/login', async (req, res) => {
   if (!phone || !password) {
     return res.status(400).json({ error: 'phone and password are required' })
   }
+
+  const jwtSecret = getJwtSecret(res)
+  if (!jwtSecret) return
+
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE phone = $1', [phone])
     if (rows.length === 0) {
@@ -107,7 +125,7 @@ router.post('/login', async (req, res) => {
     }
     const token = jwt.sign(
       { id: user.id, username: user.username, role: 'user' },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     )
     res.json({ ...rowToUser(user), token })
