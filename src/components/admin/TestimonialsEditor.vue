@@ -88,7 +88,7 @@
 
 <script>
 import adminApi from '../../utils/adminApi'
-const API = process.env.VUE_APP_API_URL || 'http://localhost:3001'
+const API = process.env.VUE_APP_API_URL || ''
 
 export default {
   name: 'TestimonialsEditor',

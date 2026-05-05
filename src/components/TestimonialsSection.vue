@@ -39,7 +39,7 @@
 
 <script>
 import axios from 'axios'
-const API = process.env.VUE_APP_API_URL || 'http://localhost:3001'
+const API = process.env.VUE_APP_API_URL || ''
 
 export default {
   name: 'TestimonialsSection',

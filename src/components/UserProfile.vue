@@ -299,7 +299,7 @@ export default {
 .up-modal {
   background: var(--dark-2, #151515); border: 1px solid rgba(255,215,0,0.18);
   border-radius: 20px; padding: 28px 24px; width: 100%; max-width: 380px;
-  position: relative;
+  position: relative; max-height: 90vh; overflow-y: auto;
 }
 .up-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--text-muted, #aaa); font-size: 18px; cursor: pointer; }
 .up-close:hover { color: var(--white, #fff); }
