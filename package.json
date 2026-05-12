@@ -5,10 +5,11 @@
   "scripts": {
     "start": "node server/index.js",
     "serve": "vue-cli-service serve",
-    "dev": "concurrently \"npm run serve\" \"npm run server\"",
+    "dev": "npm run serve",
     "build": "vue-cli-service build",
     "server": "node server/index.js",
-    "dev:all": "concurrently \"npm run serve\" \"npm run server\"",
+    "dev:all": "npm run serve",
+    "dev:legacy": "concurrently \"npm run serve\" \"npm run server\"",
     "db:migrate": "node server/migrate.js",
     "db:seed": "node server/seed.js",
     "db:import": "node server/migrateData.js",
