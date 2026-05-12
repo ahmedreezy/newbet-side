@@ -231,7 +231,7 @@ export default {
         } else if (status === 404) {
           this.editError = 'Prediction not found — refresh the page.'
         } else if (!status) {
-          this.editError = 'Cannot reach server — make sure Node server is running on port 3001.'
+          this.editError = 'Cannot reach server — make sure the Laravel API is running.'
         } else {
           this.editError = `Error ${status}: ${msg}`
         }

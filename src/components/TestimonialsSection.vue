@@ -39,7 +39,9 @@
 
 <script>
 import axios from 'axios'
-const API = process.env.VUE_APP_API_URL || ''
+import { getApiBaseUrl } from '../utils/apiBase'
+
+const API = getApiBaseUrl()
 
 export default {
   name: 'TestimonialsSection',
