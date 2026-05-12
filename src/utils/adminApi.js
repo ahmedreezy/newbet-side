@@ -1,6 +1,9 @@
 import axios from 'axios'
+import { getApiBaseUrl } from './apiBase'
 
-const adminApi = axios.create()
+const adminApi = axios.create({
+  baseURL: getApiBaseUrl()
+})
 
 adminApi.interceptors.request.use(config => {
   const token = localStorage.getItem('adminToken')
