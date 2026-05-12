@@ -12,6 +12,7 @@ const subscriptionsRouter    = require('./routes/subscriptions')
 const testimonialsRouter     = require('./routes/testimonials')
 const paymentsRouter         = require('./routes/payments')
 const notificationsRouter    = require('./routes/notifications')
+const groupsRouter           = require('./routes/groups')
 
 const app = express()
 
@@ -45,5 +46,6 @@ app.use('/api/subscriptions',    subscriptionsRouter)
 app.use('/api/testimonials',     testimonialsRouter)
 app.use('/api/payments',         paymentsRouter)
 app.use('/api/notifications',    notificationsRouter)
+app.use('/api/groups',           groupsRouter)
 
 module.exports = app

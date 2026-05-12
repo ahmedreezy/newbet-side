@@ -140,6 +140,52 @@ async function migrate() {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS secret_code_hash VARCHAR(255) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS odds_type        VARCHAR(20)  DEFAULT '2';
     `)
+    console.log('✓ Core column migrations applied.')
+
+    // ─── Groups table (VIP packages) ────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groups (
+        id            SERIAL PRIMARY KEY,
+        name          VARCHAR(100) UNIQUE NOT NULL,
+        odds_type     VARCHAR(20)  NOT NULL,
+        plan_type     VARCHAR(20)  NOT NULL,
+        price         NUMERIC(12,2) NOT NULL DEFAULT 0,
+        betslip_link  VARCHAR(500)  NOT NULL DEFAULT '',
+        betslip_code  VARCHAR(100)  NOT NULL DEFAULT '',
+        is_special    BOOLEAN       NOT NULL DEFAULT FALSE,
+        is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
+        special_price NUMERIC(12,2),
+        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `)
+
+    // Ensure groups columns exist if table was already created without them
+    await client.query(`
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_special    BOOLEAN      NOT NULL DEFAULT FALSE;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_active     BOOLEAN      NOT NULL DEFAULT TRUE;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_price NUMERIC(12,2);
+    `)
+
+    // Ensure UNIQUE constraint on groups.name exists (for ON CONFLICT upserts)
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'groups'::regclass AND conname = 'groups_name_key'
+        ) THEN
+          ALTER TABLE groups ADD CONSTRAINT groups_name_key UNIQUE (name);
+        END IF;
+      END $$;
+    `)
+
+    // ─── Link subscriptions → groups + payment references ───────────────────
+    await client.query(`
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS group_id          INTEGER REFERENCES groups(id) ON DELETE SET NULL;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS transaction_id    VARCHAR(200);
+    `)
     console.log('✓ Migration complete — all tables and columns up to date.')
   } finally {
     client.release()
