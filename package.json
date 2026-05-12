@@ -7,6 +7,7 @@
     "serve": "vue-cli-service serve",
     "dev": "concurrently \"npm run serve\" \"npm run server\"",
     "build": "vue-cli-service build",
+    "deploy:cpanel": "bash scripts/publish_to_laravel_public.sh \"$LARAVEL_PUBLIC_DIR\"",
     "server": "node server/index.js",
     "dev:all": "concurrently \"npm run serve\" \"npm run server\"",
     "db:migrate": "node server/migrate.js",
