@@ -516,6 +516,34 @@ export default {
     document.removeEventListener('keydown', this._onKeyDown)
   },
   methods: {
+    getApiErrorMessage(err, fallback) {
+      const responseData = err?.response?.data
+      if (!responseData) return fallback
+
+      if (typeof responseData.error === 'string' && responseData.error !== 'Validation failed') {
+        return responseData.error
+      }
+
+      const fieldErrors = responseData.errors
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        for (const key of Object.keys(fieldErrors)) {
+          const msgs = fieldErrors[key]
+          if (Array.isArray(msgs) && msgs.length > 0 && typeof msgs[0] === 'string') {
+            return msgs[0]
+          }
+        }
+      }
+
+      if (typeof responseData.message === 'string' && responseData.message.trim()) {
+        return responseData.message
+      }
+
+      if (typeof responseData.error === 'string' && responseData.error.trim()) {
+        return responseData.error
+      }
+
+      return fallback
+    },
     planDuration(planType) {
       return { daily: '24h access', weekly: '7-day access', monthly: '30-day access', special: '24h access' }[planType] || planType
     },
@@ -607,7 +635,7 @@ export default {
           this.regUser = err.response.data.user
           this.toPaymentPromptStep()
         } else {
-          this.regError = err.response?.data?.error || 'Registration failed. Please try again.'
+          this.regError = this.getApiErrorMessage(err, 'Registration failed. Please try again.')
         }
       } finally {
         this.regLoading = false
@@ -624,7 +652,7 @@ export default {
         this.regUser = data.user || data
         this.toPaymentPromptStep()
       } catch (err) {
-        this.regError = err.response?.data?.error || 'Login failed. Please check your phone and password.'
+        this.regError = this.getApiErrorMessage(err, 'Login failed. Please check your phone and password.')
       } finally {
         this.regLoading = false
       }
