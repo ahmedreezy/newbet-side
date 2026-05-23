@@ -65,6 +65,7 @@
         <FreeOdd2Editor      v-if="activeSection === 'free-odd2'" />
         <FootballTipsEditor  v-if="activeSection === 'football-tips'" />
         <RecentWinsEditor    v-if="activeSection === 'recent-wins'" />
+        <VipPackagesEditor   v-if="activeSection === 'vip-packages'" />
         <PaymentsOverview    v-if="activeSection === 'payments'" :focusSubscriptionId="focusSubId" @vue:unmounted="focusSubId = null" />
         <TestimonialsEditor  v-if="activeSection === 'testimonials'" />
         <UsersEditor         v-if="activeSection === 'users'" />
@@ -79,6 +80,7 @@ import axios from 'axios'
 import FreeOdd2Editor     from '../../components/admin/FreeOdd2Editor.vue'
 import FootballTipsEditor  from '../../components/admin/FootballTipsEditor.vue'
 import RecentWinsEditor    from '../../components/admin/RecentWinsEditor.vue'
+import VipPackagesEditor   from '../../components/admin/VipPackagesEditor.vue'
 import PaymentsOverview    from '../../components/admin/PaymentsOverview.vue'
 import TestimonialsEditor  from '../../components/admin/TestimonialsEditor.vue'
 import UsersEditor         from '../../components/admin/UsersEditor.vue'
@@ -86,7 +88,7 @@ import SitePreview         from '../../components/admin/SitePreview.vue'
 
 export default {
   name: 'AdminDashboard',
-  components: { FreeOdd2Editor, FootballTipsEditor, RecentWinsEditor, PaymentsOverview, TestimonialsEditor, UsersEditor, SitePreview },
+  components: { FreeOdd2Editor, FootballTipsEditor, RecentWinsEditor, VipPackagesEditor, PaymentsOverview, TestimonialsEditor, UsersEditor, SitePreview },
   directives: {
     'click-outside': {
       mounted(el, binding) {
@@ -102,13 +104,14 @@ export default {
       activeSection: 'free-odd2',
       todayDate: d.toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' }),
       navItems: [
-        { id: 'free-odd2',     icon: '\u26a1', label: 'Free Daily Tip' },
-        { id: 'football-tips', icon: '\u26bd', label: 'Almax Predictions' },
-        { id: 'recent-wins',   icon: '\ud83c\udfc6', label: 'Recent Wins' },
-        { id: 'payments',      icon: '\ud83d\udcb3', label: 'Payments' },
-        { id: 'users',         icon: '\ud83d\udc65', label: 'Members' },
-        { id: 'testimonials',  icon: '\ud83d\udcac', label: 'Testimonials' },
-        { id: 'preview',       icon: '\ud83d\udc41', label: 'Site Preview' }
+        { id: 'free-odd2',     icon: '⚡', label: 'Free Daily Tip' },
+        { id: 'football-tips', icon: '⚽', label: 'Almax Predictions' },
+        { id: 'recent-wins',   icon: '🏆', label: 'Recent Wins' },
+        { id: 'vip-packages',  icon: '⭐', label: 'VIP Packages' },
+        { id: 'payments',      icon: '💳', label: 'Payments' },
+        { id: 'users',         icon: '👥', label: 'Members' },
+        { id: 'testimonials',  icon: '💬', label: 'Testimonials' },
+        { id: 'preview',       icon: '👁', label: 'Site Preview' }
       ],
       notifications: [],
       unreadCount: 0,
