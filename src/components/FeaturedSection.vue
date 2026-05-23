@@ -902,7 +902,14 @@ export default {
         this.vipStep = 'processing'
         this.startPolling()
       } catch (err) {
-        if (err.response?.status === 422 && err.response?.data?.alternatives) {
+        if (err.response?.status === 409 && err.response?.data?.existingSubscriptionId) {
+          // Duplicate-submit guard on backend: continue watching the already pending request.
+          this.processingSubId = err.response.data.existingSubscriptionId
+          this.pollCount = 0
+          this.pollError = ''
+          this.vipStep = 'processing'
+          this.startPolling()
+        } else if (err.response?.status === 422 && err.response?.data?.alternatives) {
           // Package closed for today — show alternatives
           this.deadlineMessage      = err.response.data.message
           this.deadlineAlternatives = err.response.data.alternatives
