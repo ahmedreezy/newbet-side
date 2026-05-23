@@ -675,7 +675,6 @@ export default {
     document.removeEventListener('keydown', this._onKeyDown)
   },
   methods: {
-<<<<<<< HEAD
     getApiErrorMessage(err, fallback) {
       const responseData = err?.response?.data
       if (!responseData) return fallback
@@ -703,13 +702,12 @@ export default {
       }
 
       return fallback
-=======
+    },
     async fetchMagicQuestion() {
       try {
         const { data } = await axios.get('/api/users/magic-question')
         this.magicQuestion = data.question || ''
       } catch { /* non-critical — form will still show */ }
->>>>>>> 27595462abc6b67602aea337642a9b788ba70158
     },
     planDuration(planType) {
       return { daily: '24h access', weekly: '7-day access', monthly: '30-day access', special: '24h access' }[planType] || planType
