@@ -5,6 +5,16 @@ const router   = express.Router()
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
 
+function getJwtSecret(res) {
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set')
+    res.status(500).json({ error: 'Server configuration error' })
+    return null
+  }
+
+  return process.env.JWT_SECRET
+}
+
 function rowToUser(row) {
   return {
     id:        row.id,
@@ -56,24 +66,32 @@ router.get('/', auth, async (req, res) => {
 
 // POST register a new user (public)
 router.post('/', async (req, res) => {
-  const { username, phone, password } = req.body
+  const { username, phone, password, securityAnswer } = req.body
   if (!username || !phone || !password) {
     return res.status(400).json({ error: 'username, phone, and password are required' })
   }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' })
   }
+  if (!securityAnswer || securityAnswer.trim().length < 2) {
+    return res.status(400).json({ error: 'A security answer is required for account recovery' })
+  }
+
+  const jwtSecret = getJwtSecret(res)
+  if (!jwtSecret) return
+
   try {
-    const passwordHash = await bcrypt.hash(password, 12)
+    const passwordHash     = await bcrypt.hash(password, 12)
+    const answerHash       = await bcrypt.hash(securityAnswer.trim().toLowerCase(), 12)
     const { rows } = await pool.query(`
-      INSERT INTO users (username, phone, password_hash)
-      VALUES ($1, $2, $3)
+      INSERT INTO users (username, phone, password_hash, security_answer_hash)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
-    `, [username, phone, passwordHash])
+    `, [username, phone, passwordHash, answerHash])
     const user = rowToUser(rows[0])
     const token = jwt.sign(
       { id: user.id, username: user.username, role: 'user' },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     )
     res.status(201).json({ ...user, token })
@@ -92,6 +110,10 @@ router.post('/login', async (req, res) => {
   if (!phone || !password) {
     return res.status(400).json({ error: 'phone and password are required' })
   }
+
+  const jwtSecret = getJwtSecret(res)
+  if (!jwtSecret) return
+
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE phone = $1', [phone])
     if (rows.length === 0) {
@@ -107,10 +129,52 @@ router.post('/login', async (req, res) => {
     }
     const token = jwt.sign(
       { id: user.id, username: user.username, role: 'user' },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     )
     res.json({ ...rowToUser(user), token })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// GET the site-wide magic question (public — for password recovery)
+router.get('/magic-question', (req, res) => {
+  const question = process.env.USER_MAGIC_QUESTION
+  if (!question) {
+    return res.status(503).json({ error: 'Password recovery is not configured on this server.' })
+  }
+  res.json({ question })
+})
+
+// POST reset password via security answer (public)
+router.post('/reset-password', async (req, res) => {
+  const { phone, answer, newPassword } = req.body
+  if (!phone || !answer || !newPassword) {
+    return res.status(400).json({ error: 'phone, answer, and newPassword are required' })
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' })
+  }
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE phone = $1', [phone])
+    // Generic 401 for both unknown phone and wrong answer — prevents user enumeration
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Incorrect phone number or security answer.' })
+    }
+    const user = rows[0]
+    if (!user.security_answer_hash) {
+      return res.status(400).json({ error: 'No recovery answer on file for this account. Please contact support.' })
+    }
+    const valid = await bcrypt.compare(answer.trim().toLowerCase(), user.security_answer_hash)
+    if (!valid) {
+      return res.status(401).json({ error: 'Incorrect phone number or security answer.' })
+    }
+    const newHash = await bcrypt.hash(newPassword, 12)
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id])
+    res.json({ message: 'Password reset successfully. You can now log in with your new password.' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })

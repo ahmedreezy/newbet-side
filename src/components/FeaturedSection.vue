@@ -56,31 +56,43 @@
         <div class="today-date-badge">{{ todayFormatted }}</div>
       </div>
 
+      <!-- VIP betslip box shown when user has an active subscription -->
+      <div v-if="userActiveSubs.length" class="vip-betslip-banner">
+        <div v-for="sub in userActiveSubs" :key="sub.id" class="vip-sub-card">
+          <div class="vip-betslip-header">✅ VIP ACTIVE — Expires {{ formatExpiry(sub.expiresAt) }}</div>
+          <div v-if="sub.betslipLink" class="betslip-section">
+            <div class="betslip-label">🔗 Betslip Link</div>
+            <a :href="sub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ sub.betslipLink }}</a>
+          </div>
+          <div v-if="sub.betslipCode" class="betslip-section">
+            <div class="betslip-label">🎫 Betslip Code</div>
+            <div class="betslip-code-row">
+              <code class="betslip-code">{{ sub.betslipCode }}</code>
+              <button class="copy-btn" @click="copyCode(sub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+            </div>
+          </div>
+          <div v-if="!sub.betslipLink && !sub.betslipCode" class="betslip-pending-note">
+            ⏳ Betslip will appear here once admin activates your subscription.
+          </div>
+        </div>
+      </div>
+
       <div class="picks-grid">
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
-          <!-- jersey cartoon top strip / image -->
-          <div class="pick-kit-bar" :class="{ 'has-image': pick.imageUrl }">
-            <template v-if="pick.imageUrl">
-              <img :src="pick.imageUrl" :alt="pick.home + ' vs ' + pick.away" class="pick-card-img" />
-            </template>
-            <template v-else>
-              <svg class="kit-svg" viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">
+          <!-- Full-width image -->
+          <div class="pick-img-bar">
+            <img v-if="pick.imageUrl" :src="pick.imageUrl" :alt="pick.caption || 'prediction'" class="pick-card-img" />
+            <div v-else class="pick-img-placeholder">
+              <svg viewBox="0 0 80 54" width="56" height="38" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
                 <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
-                      :fill="pick.kitColor" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-                <text x="40" y="36" text-anchor="middle" font-size="16" font-weight="900" fill="rgba(255,255,255,0.85)">
-                  {{ pick.kitNumber }}
-                </text>
+                      fill="#FFD700" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
               </svg>
-            </template>
-            <div class="pick-comp-badge">{{ pick.competition }}</div>
+            </div>
           </div>
           <!-- content -->
           <div class="pick-body">
-            <div class="pick-match">
-              <span class="pick-home">{{ pick.home }}</span>
-              <span class="pick-vs">VS</span>
-              <span class="pick-away">{{ pick.away }}</span>
-            </div>
+            <!-- Caption -->
+            <p v-if="pick.caption" class="pick-caption">{{ pick.caption }}</p>
             <!-- Win probability -->
             <div class="pick-prob-bar">
               <div class="pick-prob-header">
@@ -91,8 +103,12 @@
                 <div class="pick-prob-fill" :style="{ width: pick.winProb + '%' }"></div>
               </div>
             </div>
-            <!-- Locked tip -->
-            <div class="pick-locked-row">
+            <!-- Locked tip OR revealed prediction for active VIP -->
+            <div v-if="userActiveSub" class="pick-revealed-row">
+              <span class="unlock-icon" aria-hidden="true">🔓</span>
+              <div class="pick-tip-text">{{ pick.prediction || 'Tip available — check betslip below' }}</div>
+            </div>
+            <div v-else class="pick-locked-row">
               <span class="lock-icon" aria-hidden="true">🔒</span>
               <div class="lock-text-wrap">
                 <span class="lock-text">Expert tip hidden</span>
@@ -106,9 +122,10 @@
                 </svg>
                 {{ pick.kickoff }}
               </div>
-              <button class="pick-vip-btn" @click="openVipMenu">
+              <button v-if="!userActiveSub" class="pick-vip-btn" @click="openVipMenu">
                 👑 Join VIP
               </button>
+              <span v-else class="pick-vip-active-tag">👑 VIP</span>
             </div>
           </div>
         </div>
@@ -146,38 +163,62 @@
         <div class="mm-sheet">
           <button class="mm-close" @click="closeVip" aria-label="Close">✕</button>
 
-          <!-- ── STEP 1: Plan Selection ── -->
+          <!-- ── STEP 1: Package Selection ── -->
           <template v-if="vipStep === 1">
             <div class="mm-icon">👑</div>
             <h3 class="mm-title">JOIN <span class="gold-text">VIP TIPS</span></h3>
-            <p class="mm-sub">Unlock all expert tips, odds &amp; daily predictions</p>
-            <div class="mm-plans">
+            <p class="mm-sub">Select a package to unlock expert predictions</p>
+            <div v-if="groupsLoading" class="pkg-loading">Loading packages…</div>
+            <div v-else-if="groupsError" class="pkg-error">{{ groupsError }}</div>
+            <div v-else class="pkg-grid" role="radiogroup" aria-label="Select a VIP package">
               <div
-                class="mm-plan selectable"
-                :class="{ selected: selectedPlan === 'daily' }"
-                @click="selectedPlan = 'daily'"
+                v-for="group in visibleGroups"
+                :key="group.id"
+                class="pkg-row"
+                :class="{
+                  'pkg-row--selected': selectedGroup && selectedGroup.id === group.id,
+                  'pkg-row--special':  group.isSpecial,
+                  'pkg-row--closed':   group.isClosed,
+                }"
+                @click="!group.isClosed && (selectedGroup = group)"
+                role="radio"
+                :aria-checked="!!(selectedGroup && selectedGroup.id === group.id)"
+                :aria-disabled="group.isClosed"
               >
-                <div class="plan-name">Daily</div>
-                <div class="plan-price">{{ (vipCfg.daily_price || 5000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
-                <div class="plan-period">1 day access</div>
-              </div>
-              <div
-                class="mm-plan selectable"
-                :class="{ selected: selectedPlan === 'weekly', 'plan-popular': true }"
-                @click="selectedPlan = 'weekly'"
-              >
-                <span class="plan-badge">BEST VALUE</span>
-                <div class="plan-name">Weekly</div>
-                <div class="plan-price">{{ (vipCfg.weekly_price || 20000).toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</div>
-                <div class="plan-period">6 days access</div>
+                <div class="pkg-icon-wrap" :class="'pkg-icon-' + group.planType">
+                  <span class="pkg-icon-val">{{ group.isSpecial ? '⚡' : group.oddsType }}</span>
+                </div>
+                <div class="pkg-meta">
+                  <div class="pkg-name">
+                    {{ group.name }}
+                    <span v-if="group.isClosed" class="pkg-closed-badge">Closed</span>
+                  </div>
+                  <div class="pkg-tags">
+                    <span class="pkg-tag">{{ planDuration(group.planType) }}</span>
+                    <span v-if="group.subscriptionDeadline && !group.isClosed" class="pkg-tag pkg-tag--time">🕐 Closes {{ formatDeadline(group.subscriptionDeadline) }}</span>
+                    <span v-if="group.isClosed && group.subscriptionDeadline" class="pkg-tag pkg-tag--closed">🕐 Closed at {{ formatDeadline(group.subscriptionDeadline) }}</span>
+                    <span v-if="group.name.includes('Big Staker')" class="pkg-tag pkg-tag--orange">Big Staker</span>
+                    <span v-if="group.isSpecial" class="pkg-tag pkg-tag--purple">Today Only</span>
+                  </div>
+                </div>
+                <div class="pkg-price-col">
+                  <div class="pkg-price">{{ effectiveGroupPrice(group).toLocaleString() }}</div>
+                  <div class="pkg-currency">UGX</div>
+                </div>
+                <div class="pkg-check-col">
+                  <div class="pkg-check" :class="{ 'pkg-check--on': selectedGroup && selectedGroup.id === group.id }">✓</div>
+                </div>
               </div>
             </div>
-            <button class="mm-next-btn" @click="vipStep = 2">Continue →</button>
+            <button class="mm-next-btn"
+              :disabled="!selectedGroup || selectedGroup.isClosed"
+              @click="goToAuthStep">
+              {{ selectedGroup && selectedGroup.isClosed ? 'Package closed for today' : 'Continue →' }}
+            </button>
             <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
           </template>
-
-          <!-- ── STEP 2: Registration / Login ── -->
-          <template v-else-if="vipStep === 2">
+          <!-- ── STEP 3: Registration / Login ── -->
+          <template v-else-if="vipStep === 3">
             <div class="mm-icon">👤</div>
             <h3 class="mm-title">YOUR <span class="gold-text">ACCOUNT</span></h3>
 
@@ -219,6 +260,12 @@
                     <button type="button" class="pw-eye" @click="showConfirmPw = !showConfirmPw">{{ showConfirmPw ? '🙈' : '👁' }}</button>
                   </div>
                 </div>
+                <div class="field">
+                  <label class="security-q-label">🔐 Security Question</label>
+                  <p class="security-q-text">{{ magicQuestion || 'Loading…' }}</p>
+                  <input v-model="regForm.securityAnswer" type="text" placeholder="Your answer (for account recovery)" required minlength="2" autocomplete="off" />
+                  <p class="security-q-hint">Remember this answer — you'll need it to recover your password.</p>
+                </div>
                 <p v-if="regError" class="reg-error">{{ regError }}</p>
                 <button type="submit" class="mm-next-btn" :disabled="regLoading">
                   {{ regLoading ? 'Creating account…' : 'Create Account →' }}
@@ -241,101 +288,180 @@
                 <button type="submit" class="mm-next-btn" :disabled="regLoading">
                   {{ regLoading ? 'Logging in…' : 'Login →' }}
                 </button>
+                <p class="mm-forgot-link" @click="openForgot">Forgot password?</p>
               </form>
             </template>
 
-            <button v-if="regUser" class="mm-next-btn" style="margin-top:12px" @click="vipStep = 3">Continue →</button>
+            <button v-if="regUser" class="mm-next-btn" style="margin-top:12px" @click="toPaymentPromptStep">Continue →</button>
             <p class="mm-back" @click="vipStep = 1">← Back</p>
           </template>
 
-          <!-- ── STEP 3: Payment Method ── -->
-          <template v-else-if="vipStep === 3">
+          <!-- ── FORGOT PASSWORD ── -->
+          <template v-else-if="vipStep === 'forgot'">
+            <div class="mm-icon">🔐</div>
+            <h3 class="mm-title">RESET YOUR <span class="gold-text">PASSWORD</span></h3>
+
+            <!-- Sub-step: phone entry -->
+            <template v-if="forgotSubStep === 'phone'">
+              <p class="mm-sub">Enter your registered phone number to continue.</p>
+              <form @submit.prevent="fetchForgotQuestion" class="reg-form">
+                <div class="field">
+                  <label>Phone Number</label>
+                  <input v-model="forgotPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
+                </div>
+                <p v-if="forgotError" class="reg-error">{{ forgotError }}</p>
+                <button type="submit" class="mm-next-btn" :disabled="forgotLoading">
+                  {{ forgotLoading ? 'Checking…' : 'Continue →' }}
+                </button>
+              </form>
+            </template>
+
+            <!-- Sub-step: answer + new password -->
+            <template v-else-if="forgotSubStep === 'answer'">
+              <p class="mm-sub">Answer your security question to reset your password.</p>
+              <form @submit.prevent="submitPasswordReset" class="reg-form">
+                <div class="field">
+                  <label class="security-q-label">Security Question</label>
+                  <p class="security-q-text">{{ forgotQuestion }}</p>
+                  <input v-model="forgotAnswer" type="text" placeholder="Your answer" required minlength="2" autocomplete="off" />
+                </div>
+                <div class="field">
+                  <label>New Password</label>
+                  <div class="pw-wrap">
+                    <input v-model="forgotNewPassword" :type="showForgotPw ? 'text' : 'password'" placeholder="Min. 6 characters" required minlength="6" />
+                    <button type="button" class="pw-eye" @click="showForgotPw = !showForgotPw">{{ showForgotPw ? '🙈' : '👁' }}</button>
+                  </div>
+                </div>
+                <p v-if="forgotError" class="reg-error">{{ forgotError }}</p>
+                <button type="submit" class="mm-next-btn" :disabled="forgotLoading">
+                  {{ forgotLoading ? 'Resetting…' : 'Reset Password →' }}
+                </button>
+              </form>
+            </template>
+
+            <!-- Sub-step: success -->
+            <template v-else-if="forgotSubStep === 'done'">
+              <p class="mm-sub" style="color:#4caf50;font-weight:600">✅ Password updated successfully!</p>
+              <p class="mm-sub">You can now log in with your new password.</p>
+              <button class="mm-next-btn" @click="vipStep = 3; isReturning = true; forgotSubStep = 'phone'; forgotError = ''">
+                Back to Login →
+              </button>
+            </template>
+
+            <p v-if="forgotSubStep !== 'done'" class="mm-back" @click="vipStep = 3; isReturning = true; forgotError = ''">← Back to Login</p>
+          </template>
+
+          <!-- ── PAYMENT PROMPT: pre-filled amount, phone, network ── -->
+          <template v-else-if="vipStep === 'payment-prompt'">
             <div class="mm-icon">📱</div>
             <h3 class="mm-title">PAY VIA <span class="gold-text">MOBILE MONEY</span></h3>
-            <p class="mm-sub">Choose your provider and follow the instructions</p>
+            <p v-if="selectedGroup" class="mm-sub">{{ selectedGroup.name }} &mdash; {{ effectiveGroupPrice(selectedGroup).toLocaleString() }} UGX</p>
 
-            <div class="provider-cards">
-              <div
-                class="provider-card"
-                :class="{ selected: selectedProvider === 'mtn' }"
-                @click="selectedProvider = 'mtn'"
-              >
-                <div class="provider-logo mtn-logo">MTN</div>
-                <div class="provider-name">MTN MoMo</div>
-                <div class="provider-num">{{ vipCfg.mtn_number }}</div>
+            <div class="reg-form" style="text-align:left">
+              <div class="field">
+                <label>Amount (UGX)</label>
+                <input :value="selectedGroup ? effectiveGroupPrice(selectedGroup).toLocaleString() : ''" type="text" readonly disabled style="opacity:0.7;cursor:not-allowed" />
               </div>
-              <div
-                class="provider-card"
-                :class="{ selected: selectedProvider === 'airtel' }"
-                @click="selectedProvider = 'airtel'"
-              >
-                <div class="provider-logo airtel-logo">Airtel</div>
-                <div class="provider-name">Airtel Money</div>
-                <div class="provider-num">{{ vipCfg.airtel_number }}</div>
+              <div class="field">
+                <label>Mobile Money Phone</label>
+                <input v-model="payPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
               </div>
-            </div>
-
-            <div v-if="selectedProvider" class="payment-instructions">
-              <div class="instr-title">📋 Payment Instructions</div>
-              <ol class="instr-list">
-                <li>Dial <strong>*165#</strong> (MTN) or <strong>*185#</strong> (Airtel) on your phone</li>
-                <li>Select "Send Money" then "To Phone Number"</li>
-                <li>Enter number: <strong>{{ selectedProvider === 'mtn' ? vipCfg.mtn_number : vipCfg.airtel_number }}</strong></li>
-                <li>Enter amount: <strong>{{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</strong></li>
-                <li>Enter your PIN to confirm</li>
-              </ol>
-              <div class="pay-amount-badge">
-                Amount: {{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}
-                <span class="pay-plan-tag">{{ selectedPlan }} plan</span>
+              <div class="field">
+                <label>Network</label>
+                <div class="provider-cards" style="margin-bottom:0">
+                  <div class="provider-card provider-card--disabled">
+                    <div class="provider-logo mtn-logo">MTN</div>
+                    <div class="provider-name">MTN MoMo</div>
+                    <div class="coming-soon-badge">Coming Soon</div>
+                  </div>
+                  <div class="provider-card" :class="{ selected: selectedProvider === 'airtel' }" @click="selectedProvider = 'airtel'">
+                    <div class="provider-logo airtel-logo">Airtel</div>
+                    <div class="provider-name">Airtel Money</div>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <!-- Proof of payment upload -->
-            <div class="proof-upload-block">
-              <div class="proof-upload-label">📸 Upload Proof of Payment <span class="proof-optional">(optional but speeds up verification)</span></div>
-              <label class="proof-file-btn">
-                {{ proofFile ? proofFile.name : 'Choose screenshot (JPG or PNG)' }}
-                <input type="file" accept="image/jpeg,image/png" @change="handleProofFile" class="proof-file-input" />
-              </label>
-              <img v-if="proofPreview" :src="proofPreview" class="proof-preview-thumb" alt="Proof preview" />
             </div>
 
             <p v-if="payError" class="reg-error">{{ payError }}</p>
-            <button class="mm-next-btn" :disabled="!selectedProvider || payLoading" @click="submitPayment">
-              {{ payLoading ? 'Submitting…' : '✅ I\'ve Paid — Confirm' }}
+            <button class="mm-next-btn" :disabled="!selectedProvider || !payPhone || payLoading" @click="submitPayment">
+              {{ payLoading ? 'Sending request…' : '💳 Pay Now' }}
             </button>
-            <p class="mm-back" @click="vipStep = 2">← Back</p>
+            <p class="mm-back" @click="vipStep = 3">← Back</p>
           </template>
 
-          <!-- ── STEP 4: Submitted ── -->
-          <template v-else-if="vipStep === 4">
+          <!-- ── PROCESSING: polling for payment status ── -->
+          <template v-else-if="vipStep === 'processing'">
             <div class="mm-icon">⏳</div>
-            <h3 class="mm-title">PAYMENT <span class="gold-text">SUBMITTED</span></h3>
-            <p class="mm-sub">Your payment is being verified by our team.<br/>You'll get your betslip once confirmed.</p>
-            <div class="pending-box">
-              <div class="pending-row"><span>Plan</span><strong>{{ selectedPlan === 'daily' ? 'Daily' : 'Weekly' }}</strong></div>
-              <div class="pending-row"><span>Amount</span><strong>{{ selectedPlanAmount.toLocaleString() }} {{ vipCfg.currency || 'UGX' }}</strong></div>
-              <div class="pending-row"><span>Provider</span><strong>{{ selectedProvider ? selectedProvider.toUpperCase() : '' }}</strong></div>
-              <div class="pending-row"><span>Status</span><span class="status-pending">Pending</span></div>
-            </div>
+            <h3 class="mm-title">WAITING FOR <span class="gold-text">PAYMENT</span></h3>
+            <p class="mm-sub">We sent a payment request to <strong>{{ payPhone }}</strong>.<br/>Please approve it on your phone.</p>
+            <div class="processing-spinner" aria-label="Processing"></div>
+            <p class="mm-note" style="margin-top:16px">Do not close this window. This may take up to a minute.</p>
+          </template>
 
-            <!-- Late proof upload (shown only if no proof was uploaded in step 3) -->
-            <div v-if="!proofFile && submittedSubId" class="proof-upload-block late-proof">
-              <div class="proof-upload-label">📎 Still want to speed up verification? Upload your payment screenshot:</div>
-              <label class="proof-file-btn">
-                {{ lateProofFile ? lateProofFile.name : 'Choose screenshot (JPG or PNG)' }}
-                <input type="file" accept="image/jpeg,image/png" @change="handleLateProofFile" class="proof-file-input" />
-              </label>
-              <img v-if="lateProofPreview" :src="lateProofPreview" class="proof-preview-thumb" alt="Proof preview" />
-              <button v-if="lateProofFile" class="proof-upload-send-btn" @click="uploadLateProof" :disabled="lateProofLoading">
-                {{ lateProofLoading ? 'Uploading…' : '📤 Send Proof' }}
-              </button>
-              <p v-if="lateProofError" class="reg-error">{{ lateProofError }}</p>
-              <p v-if="lateProofSent" class="proof-sent-msg">✓ Proof sent!</p>
-            </div>
+          <!-- ── PAYMENT PENDING (poll timed out) ── -->
+          <template v-else-if="vipStep === 'payment-pending'">
+            <div class="mm-icon">⏳</div>
+            <h3 class="mm-title">PAYMENT <span class="gold-text">PENDING</span></h3>
+            <p class="mm-sub">Your payment request has been saved and is being processed.</p>
+            <p class="mm-sub" style="font-size:13px;color:var(--text-muted)">
+              Approval can take a few minutes. You'll receive a prompt on your phone.
+              Once you confirm it, your subscription activates automatically.
+            </p>
+            <button class="mm-next-btn" @click="vipStep = 'status'; statusPhone = payPhone">
+              Check My Status →
+            </button>
+            <p class="mm-back" @click="closeVip">Close</p>
+          </template>
 
-            <button class="mm-next-btn" @click="vipStep = 'status'">Check My Status</button>
-            <p class="mm-note">Our admin will manually confirm your payment. Usually within 30 minutes.</p>
+          <!-- ── DEADLINE CLOSED ── -->
+          <template v-else-if="vipStep === 'deadline-closed'">
+            <div class="mm-icon">🕐</div>
+            <h3 class="mm-title">PACKAGE <span class="gold-text">CLOSED</span></h3>
+            <p class="mm-sub">{{ deadlineMessage }}</p>
+            <template v-if="deadlineAlternatives.length">
+              <p class="mm-sub" style="margin-top:12px;font-weight:600">Still available today:</p>
+              <div class="pkg-grid" style="margin-top:8px">
+                <div v-for="alt in deadlineAlternatives" :key="alt.id"
+                  class="pkg-row"
+                  :class="{ 'pkg-row--selected': selectedGroup && selectedGroup.id === alt.id }"
+                  @click="selectedGroup = groups.find(g => g.id === alt.id) || alt; vipStep = 'payment-prompt'"
+                  style="cursor:pointer">
+                  <div class="pkg-meta">
+                    <div class="pkg-name">{{ alt.name }}</div>
+                    <div class="pkg-tags"><span class="pkg-tag">{{ alt.planType }}</span></div>
+                  </div>
+                  <div class="pkg-price-col">
+                    <div class="pkg-price">{{ Number(alt.effectivePrice).toLocaleString() }}</div>
+                    <div class="pkg-currency">UGX</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <p v-else class="mm-sub" style="color:var(--text-muted)">No other packages are available right now.</p>
+            <p class="mm-back" @click="vipStep = 1">← Back to All Plans</p>
+          </template>
+
+          <!-- ── SUCCESS ── -->
+          <template v-else-if="vipStep === 'success'">
+            <div class="mm-icon">✅</div>
+            <h3 class="mm-title">PAYMENT <span class="gold-text">CONFIRMED</span></h3>
+            <p class="mm-sub">Your VIP subscription is now active!</p>
+            <div v-if="activeSub" class="betslip-box">
+              <div class="betslip-badge">✅ ACTIVE VIP</div>
+              <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
+              <div v-if="activeSub.betslipLink" class="betslip-section">
+                <div class="betslip-label">🔗 Betslip Link</div>
+                <a :href="activeSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ activeSub.betslipLink }}</a>
+              </div>
+              <div v-if="activeSub.betslipCode" class="betslip-section">
+                <div class="betslip-label">🎫 Betslip Code</div>
+                <div class="betslip-code-row">
+                  <code class="betslip-code">{{ activeSub.betslipCode }}</code>
+                  <button class="copy-btn" @click="copyCode(activeSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+                </div>
+              </div>
+            </div>
+            <button class="mm-next-btn" @click="closeVip">Done</button>
           </template>
 
           <!-- ── STATUS CHECK ── -->
@@ -353,35 +479,37 @@
               </button>
             </form>
 
-            <div v-if="activeSub" class="betslip-box">
-              <div class="betslip-badge">✅ ACTIVE VIP</div>
-              <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
+            <div v-if="activeSubs.length" class="betslip-box">
+              <div v-for="sub in activeSubs" :key="sub.id" class="status-sub-card">
+                <div class="betslip-badge">✅ ACTIVE VIP</div>
+                <p class="betslip-exp">Expires: {{ formatExpiry(sub.expiresAt) }}</p>
 
-              <div v-if="activeSub.betslipLink" class="betslip-section">
-                <div class="betslip-label">🔗 Betslip Link</div>
-                <a :href="activeSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">
-                  {{ activeSub.betslipLink }}
+                <div v-if="sub.betslipLink" class="betslip-section">
+                  <div class="betslip-label">🔗 Betslip Link</div>
+                  <a :href="sub.betslipLink" target="_blank" rel="noopener" class="betslip-link">
+                    {{ sub.betslipLink }}
+                  </a>
+                </div>
+                <div v-if="sub.betslipCode" class="betslip-section">
+                  <div class="betslip-label">🎫 Betslip Code</div>
+                  <div class="betslip-code-row">
+                    <code class="betslip-code">{{ sub.betslipCode }}</code>
+                    <button class="copy-btn" @click="copyCode(sub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+                  </div>
+                </div>
+
+                <a
+                  v-if="vipCfg.whatsapp_link"
+                  :href="vipCfg.whatsapp_link"
+                  target="_blank"
+                  rel="noopener"
+                  class="whatsapp-btn"
+                >
+                  💬 Join WhatsApp Community
                 </a>
               </div>
-              <div v-if="activeSub.betslipCode" class="betslip-section">
-                <div class="betslip-label">🎫 Betslip Code</div>
-                <div class="betslip-code-row">
-                  <code class="betslip-code">{{ activeSub.betslipCode }}</code>
-                  <button class="copy-btn" @click="copyCode(activeSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
-                </div>
-              </div>
-
-              <a
-                v-if="vipCfg.whatsapp_link"
-                :href="vipCfg.whatsapp_link"
-                target="_blank"
-                rel="noopener"
-                class="whatsapp-btn"
-              >
-                💬 Join WhatsApp Community
-              </a>
             </div>
-            <div v-else-if="statusChecked && !activeSub" class="pending-box">
+            <div v-else-if="statusChecked && !activeSubs.length" class="pending-box">
               <p style="text-align:center; color: var(--text-muted); font-size:14px;">
                 {{ pendingStatusMsg || 'No active subscription found.' }}
               </p>
@@ -399,6 +527,7 @@
 
 <script>
 import axios from 'axios'
+import { getUser, isLoggedIn } from '../utils/userAuth'
 
 const STATIC_PICKS = [
   {
@@ -429,6 +558,18 @@ const STATIC_PICKS = [
 
 export default {
   name: 'FeaturedSection',
+  emits: ['vipOpened'],
+  props: {
+    openVip: { type: Boolean, default: false }
+  },
+  watch: {
+    openVip(val) {
+      if (val) {
+        this.openVipMenu()
+        this.$emit('vipOpened')
+      }
+    }
+  },
   data() {
     const d = new Date()
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -439,12 +580,15 @@ export default {
       // VIP modal
       showVipMenu: false,
       vipStep: 1,
-      vipCfg: { daily_price: 5000, weekly_price: 20000, currency: 'UGX', mtn_number: '', airtel_number: '', whatsapp_link: '' },
-      selectedPlan: 'weekly',
-      selectedProvider: '',
+      vipCfg: { currency: 'UGX', whatsapp_link: '' },
+      // Groups
+      groups: [],
+      groupsLoading: false,
+      groupsError: '',
+      selectedGroup: null,
       // Registration / Login
       isReturning: false,
-      regForm: { username: '', phone: '', password: '', confirmPassword: '' },
+      regForm: { username: '', phone: '', password: '', confirmPassword: '', securityAnswer: '' },
       loginForm: { phone: '', password: '' },
       regUser: null,
       regError: '',
@@ -452,23 +596,37 @@ export default {
       showRegPw: false,
       showConfirmPw: false,
       showLoginPw: false,
+      // Forgot password
+      forgotSubStep: 'phone',
+      forgotPhone: '',
+      forgotQuestion: '',
+      forgotAnswer: '',
+      forgotNewPassword: '',
+      showForgotPw: false,
+      forgotError: '',
+      forgotLoading: false,
+      magicQuestion: '',
+      // Active VIP subscriptions for logged-in user (can be multiple)
+      userActiveSubs: [],
       // Payment
+      selectedProvider: '',
+      payPhone: '',
       payError: '',
       payLoading: false,
-      proofFile: null,
-      proofPreview: '',
-      submittedSubId: null,
-      lateProofFile: null,
-      lateProofPreview: '',
-      lateProofLoading: false,
-      lateProofError: '',
-      lateProofSent: false,
+      // Processing / polling
+      processingSubId: null,
+      pollCount: 0,
+      pollError: '',
+      // Deadline-closed state
+      deadlineMessage:      '',
+      deadlineAlternatives: [],
       // Status check
       statusPhone: '',
       statusError: '',
       statusLoading: false,
       statusChecked: false,
       activeSub: null,
+      activeSubs: [],
       pendingStatusMsg: '',
       copied: false,
       // Decorations
@@ -485,23 +643,86 @@ export default {
     }
   },
   computed: {
-    selectedPlanAmount() {
-      return this.selectedPlan === 'daily'
-        ? (this.vipCfg.daily_price || 5000)
-        : (this.vipCfg.weekly_price || 20000)
+    // First active sub — used for pick-card unlock and VIP button visibility
+    userActiveSub() {
+      return this.userActiveSubs[0] || null
+    },
+    visibleGroups() {
+      // Only show active packages; special packages also need a price set to be visible
+      return this.groups.filter(g => {
+        if (!g.isActive) return false
+        if (g.isSpecial) return g.specialPrice != null
+        return true
+      })
     }
   },
   async mounted() {
-    await Promise.all([this.fetchTips(), this.fetchVipConfig()])
+    await Promise.all([this.fetchTips(), this.fetchVipConfig(), this.fetchGroups(), this.fetchMagicQuestion()])
+    if (isLoggedIn()) this.fetchUserActiveSub()
     this._pollInterval = setInterval(this.fetchTips, 30000)
     this._onVisible = () => { if (!document.hidden) this.fetchTips() }
     document.addEventListener('visibilitychange', this._onVisible)
+    this._onLogout  = () => this.handleForcedLogout()
+    this._onKeyDown = (e) => { if (e.key === 'Escape' && this.showVipMenu) this.closeVip() }
+    window.addEventListener('user-logged-out', this._onLogout)
+    document.addEventListener('keydown', this._onKeyDown)
   },
   beforeUnmount() {
     clearInterval(this._pollInterval)
+    clearInterval(this._payPollInterval)
     document.removeEventListener('visibilitychange', this._onVisible)
+    window.removeEventListener('user-logged-out', this._onLogout)
+    document.removeEventListener('keydown', this._onKeyDown)
   },
   methods: {
+    getApiErrorMessage(err, fallback) {
+      const responseData = err?.response?.data
+      if (!responseData) return fallback
+
+      if (typeof responseData.error === 'string' && responseData.error !== 'Validation failed') {
+        return responseData.error
+      }
+
+      const fieldErrors = responseData.errors
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        for (const key of Object.keys(fieldErrors)) {
+          const msgs = fieldErrors[key]
+          if (Array.isArray(msgs) && msgs.length > 0 && typeof msgs[0] === 'string') {
+            return msgs[0]
+          }
+        }
+      }
+
+      if (typeof responseData.message === 'string' && responseData.message.trim()) {
+        return responseData.message
+      }
+
+      if (typeof responseData.error === 'string' && responseData.error.trim()) {
+        return responseData.error
+      }
+
+      return fallback
+    },
+    async fetchMagicQuestion() {
+      try {
+        const { data } = await axios.get('/api/users/magic-question')
+        this.magicQuestion = data.question || ''
+      } catch { /* non-critical — form will still show */ }
+    },
+    planDuration(planType) {
+      return { daily: '24h access', weekly: '7-day access', monthly: '30-day access', special: '24h access' }[planType] || planType
+    },
+    effectiveGroupPrice(group) {
+      return (group.isSpecial && group.specialPrice != null) ? group.specialPrice : group.price
+    },
+    async fetchUserActiveSub() {
+      try {
+        const user = getUser()
+        if (!user || !user.id) return
+        const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
+        this.userActiveSubs = subs.filter(s => s.status === 'active')
+      } catch { /* ignore */ }
+    },
     async fetchTips() {
       try {
         const { data } = await axios.get('/api/football-tips')
@@ -514,12 +735,117 @@ export default {
         if (data) this.vipCfg = { ...this.vipCfg, ...data }
       } catch { /* use defaults */ }
     },
+    async fetchGroups() {
+      this.groupsLoading = true
+      this.groupsError = ''
+      try {
+        const { data } = await axios.get('/api/groups')
+        // Normalize: handle both snake_case (Laravel) and camelCase (Node.js)
+        this.groups = data.map(g => ({
+          id:                   g.id,
+          name:                 g.name,
+          oddsType:             g.oddsType     ?? g.odds_type     ?? '',
+          planType:             g.planType     ?? g.plan_type     ?? '',
+          price:                parseFloat(g.price) || 0,
+          betslipLink:          g.betslipLink  ?? g.betslip_link  ?? '',
+          betslipCode:          g.betslipCode  ?? g.betslip_code  ?? '',
+          isSpecial:            g.isSpecial    ?? g.is_special    ?? false,
+          isActive:             g.isActive     ?? g.is_active     ?? true,
+          specialPrice:         g.specialPrice != null ? parseFloat(g.specialPrice)
+                              : g.special_price != null ? parseFloat(g.special_price) : null,
+          subscriptionDeadline: g.subscriptionDeadline ?? g.subscription_deadline ?? null,
+          isClosed:             g.isClosed     ?? false,
+        }))
+      } catch {
+        this.groupsError = 'Could not load packages. Please refresh and try again.'
+      } finally {
+        this.groupsLoading = false
+      }
+    },
+    handleForcedLogout() {
+      this.regUser = null
+      if (['payment-prompt', 'processing', 'deadline-closed'].includes(this.vipStep)) {
+        this.stopPolling()
+        this.vipStep = 3
+      }
+    },
     openVipMenu() {
+      if (isLoggedIn()) {
+        const stored = getUser()
+        if (stored) {
+          this.regUser = stored
+          this.statusPhone = stored.phone || ''
+        }
+      }
+      this.selectedGroup = null
+      this.selectedProvider = ''
+      this.payPhone = ''
       this.vipStep = 1
       this.showVipMenu = true
+      // Re-fetch packages each open so admin changes are immediately reflected
+      this.fetchGroups()
     },
     closeVip() {
+      if (['payment-prompt', 'processing', 'payment-pending'].includes(this.vipStep)) {
+        if (!confirm('Payment is in progress. Are you sure you want to close?')) return
+      }
+      this.stopPolling()
       this.showVipMenu = false
+    },
+    goToAuthStep() {
+      if (!this.selectedGroup) return
+      if (this.regUser) {
+        this.toPaymentPromptStep()
+      } else {
+        this.vipStep = 3
+      }
+    },
+    toPaymentPromptStep() {
+      this.payError = ''
+      this.vipStep = 'payment-prompt'
+    },
+    openForgot() {
+      this.forgotSubStep   = 'phone'
+      this.forgotPhone     = this.loginForm.phone || ''
+      this.forgotQuestion  = this.magicQuestion
+      this.forgotAnswer    = ''
+      this.forgotNewPassword = ''
+      this.forgotError     = ''
+      this.showForgotPw    = false
+      this.vipStep         = 'forgot'
+    },
+    async fetchForgotQuestion() {
+      this.forgotLoading = true
+      this.forgotError   = ''
+      try {
+        // Just validate that the phone exists by fetching the magic question (already loaded)
+        if (!this.magicQuestion) {
+          const { data } = await axios.get('/api/users/magic-question')
+          this.magicQuestion = data.question
+        }
+        this.forgotQuestion = this.magicQuestion
+        this.forgotSubStep  = 'answer'
+      } catch (err) {
+        this.forgotError = err.response?.data?.error || 'Could not load security question. Please try again.'
+      } finally {
+        this.forgotLoading = false
+      }
+    },
+    async submitPasswordReset() {
+      this.forgotLoading = true
+      this.forgotError   = ''
+      try {
+        await axios.post('/api/users/reset-password', {
+          phone:       this.forgotPhone,
+          answer:      this.forgotAnswer,
+          newPassword: this.forgotNewPassword
+        })
+        this.forgotSubStep = 'done'
+      } catch (err) {
+        this.forgotError = err.response?.data?.error || 'Reset failed. Please check your answer and try again.'
+      } finally {
+        this.forgotLoading = false
+      }
     },
     async registerUser() {
       if (this.regForm.password !== this.regForm.confirmPassword) {
@@ -529,16 +855,16 @@ export default {
       this.regLoading = true
       this.regError = ''
       try {
-        const { data } = await axios.post('/api/users', {
-          username: this.regForm.username,
-          phone: this.regForm.phone,
-          password: this.regForm.password
-        })
-        const { token, ...userInfo } = data
-        if (token) { try { const { saveUser } = await import('../utils/userAuth.js'); saveUser(userInfo, token) } catch {} }
-        this.regUser = userInfo
+        const { data } = await axios.post('/api/users', this.regForm)
+        this.regUser = data
+        this.toPaymentPromptStep()
       } catch (err) {
-        this.regError = err.response?.data?.error || 'Registration failed. Please try again.'
+        if (err.response && err.response.status === 409) {
+          this.regUser = err.response.data.user
+          this.toPaymentPromptStep()
+        } else {
+          this.regError = this.getApiErrorMessage(err, 'Registration failed. Please try again.')
+        }
       } finally {
         this.regLoading = false
       }
@@ -551,66 +877,71 @@ export default {
           phone: this.loginForm.phone,
           password: this.loginForm.password
         })
-        const { token, ...userInfo } = data
-        if (token) { try { const { saveUser } = await import('../utils/userAuth.js'); saveUser(userInfo, token) } catch {} }
-        this.regUser = userInfo
+        this.regUser = data.user || data
+        this.toPaymentPromptStep()
       } catch (err) {
-        this.regError = err.response?.data?.error || 'Login failed. Check your phone and password.'
+        this.regError = this.getApiErrorMessage(err, 'Login failed. Please check your phone and password.')
       } finally {
         this.regLoading = false
       }
     },
-    handleProofFile(e) {
-      const file = e.target.files[0]
-      if (!file) return
-      this.proofFile = file
-      this.proofPreview = URL.createObjectURL(file)
-    },
-    handleLateProofFile(e) {
-      const file = e.target.files[0]
-      if (!file) return
-      this.lateProofFile = file
-      this.lateProofPreview = URL.createObjectURL(file)
-    },
     async submitPayment() {
-      if (!this.selectedProvider) return
+      if (!this.selectedProvider || !this.payPhone || !this.selectedGroup || !this.regUser) return
       this.payLoading = true
       this.payError = ''
       try {
-        const phone = this.regUser?.phone || ''
-        const formData = new FormData()
-        formData.append('userId', this.regUser.id)
-        formData.append('planType', this.selectedPlan)
-        formData.append('paymentMethod', this.selectedProvider)
-        formData.append('phone', phone)
-        if (this.proofFile) formData.append('proof', this.proofFile)
-        const { data } = await axios.post('/api/subscriptions', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+        const { data } = await axios.post('/api/subscriptions', {
+          userId:        this.regUser.id,
+          groupId:       this.selectedGroup.id,
+          paymentMethod: this.selectedProvider,
+          phone:         this.payPhone
         })
-        this.submittedSubId = data.subscription?.id || data.id || null
-        this.vipStep = 4
+        this.processingSubId = data.subscription?.id || null
+        this.pollCount = 0
+        this.pollError = ''
+        this.vipStep = 'processing'
+        this.startPolling()
       } catch (err) {
-        this.payError = err.response?.data?.error || 'Submission failed. Please try again.'
+        if (err.response?.status === 422 && err.response?.data?.alternatives) {
+          // Package closed for today — show alternatives
+          this.deadlineMessage      = err.response.data.message
+          this.deadlineAlternatives = err.response.data.alternatives
+          this.vipStep = 'deadline-closed'
+        } else {
+          this.payError = err.response?.data?.error || err.response?.data?.message
+            || 'Payment initiation failed. Please try again.'
+        }
       } finally {
         this.payLoading = false
       }
     },
-    async uploadLateProof() {
-      if (!this.lateProofFile || !this.submittedSubId) return
-      this.lateProofLoading = true
-      this.lateProofError = ''
-      try {
-        const fd = new FormData()
-        fd.append('proof', this.lateProofFile)
-        await axios.post('/api/subscriptions/' + this.submittedSubId + '/proof', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-        this.lateProofSent = true
-        this.lateProofFile = null
-      } catch (err) {
-        this.lateProofError = err.response?.data?.error || 'Upload failed. Please try again.'
-      } finally {
-        this.lateProofLoading = false
+    startPolling() {
+      this._payPollInterval = setInterval(async () => {
+        this.pollCount++
+        if (this.pollCount > 36) {  // 36 × 5s = 3 min
+          this.stopPolling()
+          this.vipStep = 'payment-pending'
+          return
+        }
+        try {
+          const { data } = await axios.get('/api/subscriptions/' + this.processingSubId + '/payment-status')
+          if (data.status === 'active') {
+            this.stopPolling()
+            this.activeSub = data.subscription
+            await this.fetchUserActiveSub()
+            this.vipStep = 'success'
+          } else if (data.status === 'failed') {
+            this.stopPolling()
+            this.pollError = 'Payment was not successful. Please try again.'
+          }
+          // still pending — keep polling
+        } catch { /* network hiccup — keep polling */ }
+      }, 5000)
+    },
+    stopPolling() {
+      if (this._payPollInterval) {
+        clearInterval(this._payPollInterval)
+        this._payPollInterval = null
       }
     },
     async checkStatus() {
@@ -618,29 +949,56 @@ export default {
       this.statusError = ''
       this.statusChecked = false
       this.activeSub = null
+      this.activeSubs = []
       this.pendingStatusMsg = ''
       try {
+        const loggedInUser = isLoggedIn() ? (this.regUser || getUser()) : null
+        if (loggedInUser && loggedInUser.id) {
+          const { data: subs } = await axios.get('/api/subscriptions/user/' + loggedInUser.id)
+          const allActive = subs.filter(s => s.status === 'active')
+          if (allActive.length) {
+            this.activeSub  = allActive[0]
+            this.activeSubs = allActive
+          } else {
+            const pending = subs.find(s => s.status === 'pending')
+            this.pendingStatusMsg = pending
+              ? '⏳ Payment pending — awaiting confirmation. Check back soon.'
+              : 'No active subscription found for this account.'
+          }
+          this.statusChecked = true
+          return
+        }
+        // fallback: look up by phone
         const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
         const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
-        const active = subs.find(s => s.status === 'active')
-        const pending = subs.find(s => s.status === 'pending')
-        if (active) {
-          this.activeSub = active
-        } else if (pending) {
-          this.pendingStatusMsg = '⏳ Payment pending — our team is verifying. Check back soon.'
+        const allActive = subs.filter(s => s.status === 'active')
+        if (allActive.length) {
+          this.activeSub  = allActive[0]
+          this.activeSubs = allActive
         } else {
-          this.pendingStatusMsg = 'No active subscription found for this number.'
+          const pending = subs.find(s => s.status === 'pending')
+          this.pendingStatusMsg = pending
+            ? '⏳ Payment pending — awaiting confirmation. Check back soon.'
+            : 'No active subscription found for this number.'
         }
         this.statusChecked = true
       } catch {
-        this.statusError = 'Phone number not found. Please register first.'
+        this.statusError = 'Could not find an account for this phone number.'
+        this.statusChecked = true
       } finally {
         this.statusLoading = false
       }
     },
     formatExpiry(ts) {
       if (!ts) return 'N/A'
-      return new Date(ts).toLocaleString()
+      return new Date(ts).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })
+    },
+    formatDeadline(hhmm) {
+      if (!hhmm) return ''
+      const [h, m] = hhmm.split(':').map(Number)
+      const ampm = h >= 12 ? 'PM' : 'AM'
+      const hour = h % 12 || 12
+      return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
     },
     async copyCode(code) {
       try {
@@ -781,43 +1139,27 @@ export default {
 }
 
 /* Kit top strip */
-.pick-kit-bar {
-  background: var(--kit-bar-bg);
-  padding: 16px 16px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+/* Image bar */
+.pick-img-bar {
+  width: 100%;
   position: relative;
-}
-.pick-kit-bar.has-image {
-  padding: 0;
-  background: var(--dark);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
 }
 .pick-card-img {
   width: 100%;
-  height: 140px;
+  height: 180px;
   object-fit: cover;
   display: block;
 }
-.pick-kit-bar.has-image .pick-comp-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 10px;
-}
-.kit-svg {
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
-}
-.pick-comp-badge {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gold);
-  background: rgba(255,215,0,0.1);
-  border: 1px solid rgba(255,215,0,0.2);
-  padding: 3px 10px;
-  border-radius: 20px;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
+.pick-img-placeholder {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,215,0,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 /* Body */
@@ -828,26 +1170,14 @@ export default {
   flex-direction: column;
   gap: 12px;
 }
-.pick-match {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-.pick-home, .pick-away {
+/* Caption */
+.pick-caption {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--white);
-  flex: 1;
-}
-.pick-away { text-align: right; }
-.pick-vs {
-  font-size: 10px;
-  font-weight: 900;
-  color: var(--gold);
-  background: rgba(255,215,0,0.1);
-  padding: 2px 7px;
-  border-radius: 4px;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.92;
 }
 
 /* ── Win probability bar ── */
@@ -894,6 +1224,53 @@ export default {
   animation: vipBeep 1.6s ease-out infinite;
 }
 .pick-vip-btn:hover { opacity: 0.88; transform: scale(1.04); }
+
+/* VIP active tag (replaces Join VIP button when user has active sub) */
+.pick-vip-active-tag {
+  background: linear-gradient(135deg, #1a7a1a, #2eb82e);
+  color: #fff;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Revealed tip row (replaces lock row for active VIP) */
+.pick-revealed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(46, 184, 46, 0.08);
+  border: 1px solid rgba(46, 184, 46, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.unlock-icon { font-size: 16px; flex-shrink: 0; }
+.pick-tip-text { font-size: 13px; color: var(--text); font-weight: 600; line-height: 1.4; }
+
+/* VIP betslip banner above picks */
+.vip-betslip-banner {
+  background: linear-gradient(135deg, rgba(26,122,26,0.15), rgba(46,184,46,0.08));
+  border: 1px solid rgba(46,184,46,0.35);
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin-bottom: 28px;
+}
+.vip-betslip-header {
+  font-size: 13px;
+  font-weight: 800;
+  color: #2eb82e;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.betslip-pending-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 8px 0;
+}
 
 .pick-footer {
   display: flex;
@@ -977,6 +1354,11 @@ export default {
 .mm-next-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .mm-next-btn:not(:disabled):hover { opacity: 0.88; }
 .mm-check-link { font-size: 12px; color: var(--gold); cursor: pointer; text-decoration: underline; margin-top: 4px; }
+.mm-forgot-link { font-size: 12px; color: var(--gold); cursor: pointer; text-decoration: underline; text-align: center; margin-top: 10px; }
+.mm-forgot-link:hover { opacity: 0.8; }
+.security-q-label { font-size: 12px; font-weight: 700; color: var(--gold); margin-bottom: 2px; }
+.security-q-text { font-size: 13px; color: var(--text-light, #ddd); font-style: italic; background: rgba(255,215,0,0.07); border-left: 3px solid var(--gold); padding: 8px 12px; border-radius: 6px; margin: 0 0 8px; line-height: 1.5; }
+.security-q-hint { font-size: 11px; color: rgba(170,170,170,0.7); margin-top: 4px; line-height: 1.5; }
 .mm-back { font-size: 12px; color: var(--text-muted); cursor: pointer; margin-top: 8px; }
 .mm-back:hover { color: var(--gold); }
 .mm-note { font-size: 11px; color: rgba(170,170,170,0.5); line-height: 1.6; margin-top: 10px; }
@@ -1014,9 +1396,11 @@ export default {
   flex: 1; max-width: 150px; padding: 16px 12px;
   background: var(--dark-3); border: 2px solid rgba(255,255,255,0.07);
   border-radius: 14px; cursor: pointer; text-align: center;
-  transition: border-color 0.2s; min-width: 100px;
+  transition: border-color 0.2s; min-width: 100px; position: relative;
 }
 .provider-card.selected { border-color: var(--gold); background: rgba(255,215,0,0.05); }
+.provider-card--disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.coming-soon-badge { position: absolute; top: -9px; right: -6px; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; background: #444; color: #bbb; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
 .provider-logo { font-size: 15px; font-weight: 900; padding: 8px 14px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
 .mtn-logo   { background: #FFCC00; color: #000; }
 .airtel-logo{ background: #ED1C24; color: #fff; }
@@ -1090,6 +1474,16 @@ export default {
 .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.25s; }
 .modal-fade-enter-from, .modal-fade-leave-to       { opacity: 0; }
 
+/* Processing spinner */
+.processing-spinner {
+  width: 52px; height: 52px; margin: 24px auto;
+  border: 4px solid rgba(255, 215, 0, 0.2);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* Goalpost accent */
 .goalpost-accent { display: flex; justify-content: center; opacity: 0.5; margin-top: 8px; }
 
@@ -1097,5 +1491,179 @@ export default {
 @media (max-width: 640px) {
   .picks-grid { grid-template-columns: 1fr; }
   .sh-row     { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Secret Code Step ── */
+.secret-code-box {
+  background: rgba(255, 215, 0, 0.06);
+  border: 2px solid rgba(255, 215, 0, 0.4);
+  border-radius: 16px;
+  padding: 24px 20px;
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.secret-code-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.secret-code-display {
+  font-size: 28px;
+  font-weight: 900;
+  font-family: monospace;
+  color: var(--gold);
+  letter-spacing: 4px;
+  background: var(--dark-3);
+  padding: 14px 24px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  word-break: break-all;
+  text-align: center;
+}
+.secret-copy-btn {
+  background: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 24px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.secret-copy-btn:hover { background: rgba(255, 215, 0, 0.25); }
+.secret-warning {
+  background: rgba(255, 100, 0, 0.08);
+  border: 1px solid rgba(255, 100, 0, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #ffb347;
+  line-height: 1.6;
+  text-align: left;
+  margin-bottom: 8px;
+}
+
+/* ── Package Selection List (Step 1) ── */
+.pkg-loading { color: var(--text-muted); padding: 32px; text-align: center; font-size: 14px; }
+.pkg-error   { color: #ff6b6b; padding: 12px; text-align: center; font-size: 13px; }
+
+.pkg-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 20px;
+}
+
+.pkg-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 13px 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.pkg-row::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: transparent;
+  border-radius: 14px 0 0 14px;
+  transition: background 0.2s;
+}
+.pkg-row:hover {
+  border-color: rgba(255,215,0,0.3);
+  background: rgba(255,215,0,0.03);
+  transform: translateX(2px);
+}
+.pkg-row:hover::before { background: rgba(255,215,0,0.5); }
+
+.pkg-row--selected {
+  border-color: var(--gold, #FFD700);
+  background: rgba(255,215,0,0.07);
+}
+.pkg-row--selected::before { background: var(--gold, #FFD700); }
+
+.pkg-row--special { border-color: rgba(171,71,188,0.3); }
+.pkg-row--special:hover { border-color: rgba(171,71,188,0.55); background: rgba(171,71,188,0.04); }
+.pkg-row--special:hover::before { background: rgba(171,71,188,0.6); }
+.pkg-row--special.pkg-row--selected { border-color: #ab47bc; background: rgba(171,71,188,0.09); }
+.pkg-row--special.pkg-row--selected::before { background: #ab47bc; }
+
+.pkg-row--closed { opacity: 0.5; cursor: not-allowed !important; pointer-events: none; }
+.pkg-closed-badge {
+  display: inline-block;
+  font-size: 10px; font-weight: 800;
+  background: #e53935; color: #fff;
+  border-radius: 5px; padding: 2px 6px;
+  margin-left: 6px; vertical-align: middle;
+  letter-spacing: 0.5px;
+}
+.pkg-tag--time    { background: rgba(100,181,246,0.18); color: #64b5f6; }
+.pkg-tag--closed  { background: rgba(229,57,53,0.18);   color: #ef9a9a; }
+.mm-back {
+  margin-top: 12px; font-size: 13px;
+  color: var(--text-muted); cursor: pointer;
+  text-decoration: underline;
+}
+.mm-back:hover { color: var(--gold, #FFD700); }
+
+/* Icon circle */
+.pkg-icon-wrap {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-weight: 900;
+}
+.pkg-icon-daily   { background: rgba(255,215,0,0.13); color: var(--gold, #FFD700); font-size: 17px; }
+.pkg-icon-weekly  { background: rgba(79,195,247,0.13); color: #4fc3f7; font-size: 17px; }
+.pkg-icon-monthly { background: rgba(102,187,106,0.13); color: #66bb6a; font-size: 17px; }
+.pkg-icon-special { background: rgba(171,71,188,0.15); color: #ce93d8; font-size: 22px; }
+.pkg-icon-val { line-height: 1; }
+
+/* Middle: name + tags */
+.pkg-meta { flex: 1; min-width: 0; text-align: left; }
+.pkg-name  { font-size: 14px; font-weight: 700; color: var(--white, #fff); margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pkg-tags  { display: flex; gap: 5px; flex-wrap: wrap; }
+.pkg-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 7px;
+  background: rgba(255,255,255,0.07); color: var(--text-muted, #888);
+}
+.pkg-tag--orange { background: rgba(251,140,0,0.14); color: #fb8c00; }
+.pkg-tag--purple { background: rgba(171,71,188,0.14); color: #ce93d8; }
+
+/* Price */
+.pkg-price-col { text-align: right; flex-shrink: 0; }
+.pkg-price    { font-size: 18px; font-weight: 900; color: var(--gold, #FFD700); line-height: 1.1; letter-spacing: -0.3px; }
+.pkg-currency { font-size: 9px; font-weight: 700; color: var(--text-muted, #888); letter-spacing: 1px; text-transform: uppercase; }
+
+/* Checkmark */
+.pkg-check-col { flex-shrink: 0; }
+.pkg-check {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800;
+  color: transparent;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.pkg-check--on {
+  background: var(--gold, #FFD700);
+  border-color: var(--gold, #FFD700);
+  color: var(--dark, #0a0a0a);
 }
 </style>

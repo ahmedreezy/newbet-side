@@ -20,6 +20,9 @@ export function getToken() {
 export function clearUser() {
   localStorage.removeItem(USER_KEY)
   localStorage.removeItem(TOKEN_KEY)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('user-logged-out'))
+  }
 }
 
 export function isLoggedIn() {

@@ -5,12 +5,26 @@ const router   = express.Router()
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
 
+function getJwtSecret(res) {
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set')
+    res.status(500).json({ error: 'Server configuration error' })
+    return null
+  }
+
+  return process.env.JWT_SECRET
+}
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' })
   }
+
+  const jwtSecret = getJwtSecret(res)
+  if (!jwtSecret) return
+
   try {
     const { rows } = await pool.query(
       'SELECT * FROM admin_users WHERE username = $1',
@@ -26,7 +40,7 @@ router.post('/login', async (req, res) => {
     }
     const token = jwt.sign(
       { id: admin.id, username: admin.username },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
     )
     res.json({ token, username: admin.username })

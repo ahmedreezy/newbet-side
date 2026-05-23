@@ -153,6 +153,34 @@ export default {
     document.body.style.overflow = ''
   },
   methods: {
+    getApiErrorMessage(err, fallback) {
+      const responseData = err?.response?.data
+      if (!responseData) return fallback
+
+      if (typeof responseData.error === 'string' && responseData.error !== 'Validation failed') {
+        return responseData.error
+      }
+
+      const fieldErrors = responseData.errors
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        for (const key of Object.keys(fieldErrors)) {
+          const msgs = fieldErrors[key]
+          if (Array.isArray(msgs) && msgs.length > 0 && typeof msgs[0] === 'string') {
+            return msgs[0]
+          }
+        }
+      }
+
+      if (typeof responseData.message === 'string' && responseData.message.trim()) {
+        return responseData.message
+      }
+
+      if (typeof responseData.error === 'string' && responseData.error.trim()) {
+        return responseData.error
+      }
+
+      return fallback
+    },
     handleOutsideClick(e) {
       if (this.showDropdown && this.$refs.wrap && !this.$refs.wrap.contains(e.target)) {
         this.showDropdown = false
@@ -201,7 +229,7 @@ export default {
         this.fetchStatus()
         this.$emit('logged-in', userInfo)
       } catch (err) {
-        this.authError = err.response?.data?.error || 'Registration failed. Try again.'
+        this.authError = this.getApiErrorMessage(err, 'Registration failed. Try again.')
       } finally {
         this.authLoading = false
       }
@@ -221,7 +249,7 @@ export default {
         this.fetchStatus()
         this.$emit('logged-in', userInfo)
       } catch (err) {
-        this.authError = err.response?.data?.error || 'Login failed. Check your phone and password.'
+        this.authError = this.getApiErrorMessage(err, 'Login failed. Check your phone and password.')
       } finally {
         this.authLoading = false
       }
@@ -299,7 +327,7 @@ export default {
 .up-modal {
   background: var(--dark-2, #151515); border: 1px solid rgba(255,215,0,0.18);
   border-radius: 20px; padding: 28px 24px; width: 100%; max-width: 380px;
-  position: relative;
+  position: relative; max-height: 90vh; overflow-y: auto;
 }
 .up-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--text-muted, #aaa); font-size: 18px; cursor: pointer; }
 .up-close:hover { color: var(--white, #fff); }

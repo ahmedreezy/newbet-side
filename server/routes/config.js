@@ -24,8 +24,14 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024
 async function getVipConfig(client) {
   const { rows } = await (client || pool).query('SELECT key, value FROM vip_config')
   const cfg = Object.fromEntries(rows.map(r => [r.key, r.value]))
-  if (cfg.daily_price)  cfg.daily_price  = parseFloat(cfg.daily_price)
-  if (cfg.weekly_price) cfg.weekly_price = parseFloat(cfg.weekly_price)
+  // Parse numeric price fields
+  const priceKeys = [
+    'daily_price', 'weekly_price',
+    'odds_1_5_weekly_price',
+    'odds_2_daily_price', 'odds_2_weekly_price',
+    'odds_5_daily_price', 'odds_5_weekly_price'
+  ]
+  for (const k of priceKeys) { if (cfg[k]) cfg[k] = parseFloat(cfg[k]) }
   return cfg
 }
 
@@ -91,7 +97,17 @@ router.put('/vip-config', auth, async (req, res) => {
     'current_betslip_link', 'current_betslip_code',
     'daily_betslip_link', 'daily_betslip_code',
     'weekly_betslip_link', 'weekly_betslip_code',
-    'ad_video_url'
+    'ad_video_url',
+    // Per-package prices
+    'odds_1_5_weekly_price',
+    'odds_2_daily_price', 'odds_2_weekly_price',
+    'odds_5_daily_price', 'odds_5_weekly_price',
+    // Per-package betslip links/codes
+    'odds_1_5_weekly_betslip_link', 'odds_1_5_weekly_betslip_code',
+    'odds_2_daily_betslip_link',    'odds_2_daily_betslip_code',
+    'odds_2_weekly_betslip_link',   'odds_2_weekly_betslip_code',
+    'odds_5_daily_betslip_link',    'odds_5_daily_betslip_code',
+    'odds_5_weekly_betslip_link',   'odds_5_weekly_betslip_code'
   ]
   const client = await pool.connect()
   try {

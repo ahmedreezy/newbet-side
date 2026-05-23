@@ -8,7 +8,7 @@ const VIP_DEFAULTS = {
   currency:              'UGX',
   mtn_number:            '0770000000',
   airtel_number:         '0750000000',
-  whatsapp_link:         'https://chat.whatsapp.com/',
+  whatsapp_link:         'https://whatsapp.com/channel/0029Vb77Bmb0wajqBRujZY30',
   current_betslip_link:  '',
   current_betslip_code:  '',
   daily_betslip_link:    '',
@@ -64,6 +64,31 @@ async function seed() {
       ON CONFLICT (id) DO NOTHING
     `)
     console.log('✓ Free odd2 default seeded.')
+
+    // ─── VIP Groups (correct packages) ──────────────────────────────────────
+    const groupDefs = [
+      { name: 'Daily Odd 5',               odds_type: '5',       plan_type: 'daily',   price: 15000, is_special: false, is_active: true,  special_price: null },
+      { name: 'Weekly Odd 5',              odds_type: '5',       plan_type: 'weekly',  price: 60000, is_special: false, is_active: true,  special_price: null },
+      { name: 'Weekly Odd 2 (Big Staker)', odds_type: '2',       plan_type: 'weekly',  price: 50000, is_special: false, is_active: true,  special_price: null },
+      { name: 'Monthly Odd 1.5',           odds_type: '1.5',     plan_type: 'monthly', price: 45000, is_special: false, is_active: true,  special_price: null },
+      { name: 'Special Odds',              odds_type: 'special', plan_type: 'special', price: 0,     is_special: true,  is_active: false, special_price: null },
+    ]
+    for (const g of groupDefs) {
+      // Try UPDATE first; INSERT only if nothing matched
+      const upd = await client.query(
+        `UPDATE groups SET odds_type=$2, plan_type=$3, price=$4, is_special=$5, is_active=$6
+         WHERE name=$1`,
+        [g.name, g.odds_type, g.plan_type, g.price, g.is_special, g.is_active]
+      )
+      if (upd.rowCount === 0) {
+        await client.query(
+          `INSERT INTO groups (name, odds_type, plan_type, price, betslip_link, betslip_code, is_special, is_active, special_price)
+           VALUES ($1, $2, $3, $4, '', '', $5, $6, $7)`,
+          [g.name, g.odds_type, g.plan_type, g.price, g.is_special, g.is_active, g.special_price]
+        )
+      }
+    }
+    console.log('✓ VIP groups seeded.')
 
     console.log('\n✅ Seeding complete.')
   } finally {

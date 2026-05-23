@@ -1,27 +1,85 @@
 <template>
   <div class="editor">
     <p class="editor-desc">
-      Review payment submissions and confirm access. Daily (5,000 UGX / 24h) and Weekly (20,000 UGX / 7 days) members are shown in separate tabs with unique betslip codes per tier.
+      Review payment submissions and confirm access. Subscriptions are separated by Daily and Weekly tiers, and further by odds package (1.5, 2, or 5 Odds) with individual betslip codes per package.
     </p>
+
+    <div class="report-wrap">
+      <div class="report-head">
+        <h3 class="report-title">Payments Report</h3>
+        <div class="report-actions">
+          <button class="report-refresh" @click="fetchReport" :disabled="reportLoading">
+            {{ reportLoading ? 'Refreshing…' : 'Refresh Report' }}
+          </button>
+        </div>
+      </div>
+      <div class="report-filter-row">
+        <div class="report-filter-field">
+          <label>From</label>
+          <input v-model="reportRange.from" type="date" />
+        </div>
+        <div class="report-filter-field">
+          <label>To</label>
+          <input v-model="reportRange.to" type="date" />
+        </div>
+        <button class="report-apply" @click="fetchReport" :disabled="reportLoading">Apply</button>
+        <button class="report-reset" @click="resetReportRange" :disabled="reportLoading">Reset</button>
+      </div>
+      <div v-if="reportError" class="error-msg" style="padding:8px 0">{{ reportError }}</div>
+      <div v-else class="report-grid">
+        <div class="report-card">
+          <div class="report-label">Total Payments</div>
+          <div class="report-value">{{ report.summary.totalPayments }}</div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Total Amount</div>
+          <div class="report-value">{{ Number(report.summary.totalAmount || 0).toLocaleString() }} UGX</div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Confirmed</div>
+          <div class="report-value">
+            {{ reportStatusCount('confirmed') }}
+            <span class="report-sub">({{ Number(reportStatusAmount('confirmed')).toLocaleString() }} UGX)</span>
+          </div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Pending</div>
+          <div class="report-value">
+            {{ reportStatusCount('pending') }}
+            <span class="report-sub">({{ Number(reportStatusAmount('pending')).toLocaleString() }} UGX)</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Tier tabs -->
     <div class="tier-tabs">
-      <button
-        :class="['tier-tab', 'daily-tab', { active: activeTier === 'daily' }]"
-        @click="activeTier = 'daily'"
-      >
-        <span class="tier-dot daily-dot"></span>
-        Daily — 5k
+      <button :class="['tier-tab','daily-tab',{active:activeTier==='daily'}]" @click="activeTier='daily';filterOdds='all'">
+        <span class="tier-dot daily-dot"></span> Daily
         <span class="tier-count">{{ countByTier('daily') }}</span>
       </button>
-      <button
-        :class="['tier-tab', 'weekly-tab', { active: activeTier === 'weekly' }]"
-        @click="activeTier = 'weekly'"
-      >
-        <span class="tier-dot weekly-dot"></span>
-        Weekly — 20k
+      <button :class="['tier-tab','weekly-tab',{active:activeTier==='weekly'}]" @click="activeTier='weekly';filterOdds='all'">
+        <span class="tier-dot weekly-dot"></span> Weekly
         <span class="tier-count">{{ countByTier('weekly') }}</span>
       </button>
+      <button :class="['tier-tab','monthly-tab',{active:activeTier==='monthly'}]" @click="activeTier='monthly';filterOdds='all'">
+        <span class="tier-dot monthly-dot"></span> Monthly
+        <span class="tier-count">{{ countByTier('monthly') }}</span>
+      </button>
+      <button :class="['tier-tab','special-tab',{active:activeTier==='special'}]" @click="activeTier='special';filterOdds='all'">
+        <span class="tier-dot special-dot"></span> Special
+        <span class="tier-count">{{ countByTier('special') }}</span>
+      </button>
+    </div>
+
+    <!-- Odds sub-filter chips -->
+    <div class="odds-filter-row">
+      <button
+        v-for="chip in oddsChips"
+        :key="chip.val"
+        :class="['odds-chip', { active: filterOdds === chip.val }]"
+        @click="filterOdds = chip.val"
+      >{{ chip.label }} <span class="count">{{ countByOdds(chip.val) }}</span></button>
     </div>
 
     <!-- Status filter toolbar -->
@@ -35,7 +93,7 @@
     </div>
 
     <div v-if="loading" class="state-msg">Loading&hellip;</div>
-    <div v-else-if="displayed.length === 0" class="empty-state">No {{ filterStatus !== 'all' ? filterStatus : '' }} records for {{ activeTier }} tier.</div>
+    <div v-else-if="displayed.length === 0" class="empty-state">No {{ filterStatus !== 'all' ? filterStatus : '' }} records for {{ activeTier }}{{ filterOdds !== 'all' ? ' · ' + filterOdds + ' odds' : '' }}.</div>
 
     <div v-else class="sub-list">
       <div
@@ -45,8 +103,11 @@
         :ref="'card-' + s.id"
       >
         <!-- Tier ribbon -->
-        <div :class="['tier-ribbon', s.planType + '-ribbon']">
-          {{ s.planType === 'daily' ? 'DAILY 5K' : 'WEEKLY 20K' }}
+        <div class="tier-ribbon-row">
+          <div :class="['tier-ribbon', s.planType + '-ribbon']">
+            {{ { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', special: 'SPECIAL' }[s.planType] || s.planType.toUpperCase() }}
+          </div>
+          <div class="odds-ribbon">{{ s.oddsType || '2' }} ODDS</div>
         </div>
 
         <div class="sub-top">
@@ -67,19 +128,10 @@
           <span v-if="s.expiresAt" class="detail-row"><strong>Expires:</strong> {{ formatDate(s.expiresAt) }}</span>
         </div>
 
-        <!-- Proof of payment -->
-        <div v-if="s.proofUrl" class="proof-row">
-          <span class="proof-label">&#128206; Proof of payment:</span>
-          <img
-            :src="s.proofUrl"
-            class="proof-thumb"
-            alt="Proof of payment"
-            @click="lightboxUrl = s.proofUrl"
-            title="Click to view full size"
-          />
-        </div>
-        <div v-else-if="s.status === 'pending'" class="proof-missing">
-          &#9888; No proof uploaded yet
+        <!-- Payment reference (replaces proof upload) -->
+        <div v-if="s.paymentReference" class="payment-ref-row">
+          <span class="proof-label">&#128179; Payment Ref:</span>
+          <code class="payment-ref">{{ s.paymentReference }}</code>
         </div>
 
         <!-- Rejection reason -->
@@ -103,37 +155,16 @@
           </button>
         </div>
 
-        <!-- Confirm panel (pending only) -->
-        <div v-if="s.status === 'pending'" :class="['confirm-panel', s.planType + '-panel']">
-          <h4 class="cp-title">Confirm Payment &amp; Assign Betslip</h4>
-          <div class="cp-fields">
-            <div class="cp-field">
-              <label>Betslip Link (optional)</label>
-              <input v-model="confirm[s.id].betslipLink" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
-            </div>
-            <div class="cp-field">
-              <label>Betslip Code (optional)</label>
-              <input v-model="confirm[s.id].betslipCode" type="text" placeholder="e.g. ABC123" />
-            </div>
-          </div>
-          <p class="cp-hint">Leave blank to auto-fill from tier default below</p>
-          <div class="cp-actions">
-            <button :class="['confirm-btn', s.planType + '-confirm']" @click="confirmSub(s)" :disabled="confirming[s.id]">
-              {{ confirming[s.id] ? 'Confirming&hellip;' : '&#10003; Confirm &amp; Activate' }}
+        <!-- Pending: show reference info only (activation is automatic) -->
+        <div v-if="s.status === 'pending'" class="confirm-panel pending-info-panel">
+          <p class="pending-info-msg">&#9203; Waiting for payment confirmation from the provider. This will activate automatically.</p>
+          <div class="pending-actions">
+            <button class="pending-activate-btn" @click="reconcileSub(s, 'success')" :disabled="reconciling[s.id]">
+              {{ reconciling[s.id] ? 'Applying…' : 'Mark as Paid' }}
             </button>
-            <button class="reject-open-btn" @click="openReject(s.id)">&#10005; Reject</button>
-          </div>
-
-          <!-- Inline reject form -->
-          <div v-if="rejectOpen[s.id]" class="reject-form">
-            <label class="reject-label">Rejection reason (optional)</label>
-            <input v-model="rejectReason[s.id]" type="text" class="reject-input" placeholder="e.g. Wrong amount sent" />
-            <div class="reject-actions">
-              <button class="reject-confirm-btn" @click="rejectSub(s)" :disabled="rejecting[s.id]">
-                {{ rejecting[s.id] ? 'Rejecting&hellip;' : 'Confirm Rejection' }}
-              </button>
-              <button class="reject-cancel-btn" @click="rejectOpen[s.id] = false">Cancel</button>
-            </div>
+            <button class="pending-fail-btn" @click="reconcileSub(s, 'failed')" :disabled="reconciling[s.id]">
+              {{ reconciling[s.id] ? 'Applying…' : 'Mark Failed' }}
+            </button>
           </div>
         </div>
 
@@ -141,89 +172,61 @@
       </div>
     </div>
 
-    <!-- Proof lightbox -->
-    <div v-if="lightboxUrl" class="lightbox-overlay" @click="lightboxUrl = null">
-      <div class="lightbox-box" @click.stop>
-        <button class="lightbox-close" @click="lightboxUrl = null">&#10005;</button>
-        <img :src="lightboxUrl" class="lightbox-img" alt="Proof of payment" />
-      </div>
-    </div>
-
-    <!-- VIP Config section -->
+    <!-- Group Management section -->
     <div class="vip-config-section">
-      <h3 class="vc-title">VIP Payment Settings</h3>
-      <div v-if="cfgLoading" class="state-msg">Loading config&hellip;</div>
-      <form v-else @submit.prevent="saveConfig" class="cfg-form">
-        <div class="cfg-section-label">&#128176; Pricing &amp; Payment Numbers</div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>Daily Price (UGX)</label>
-            <input v-model.number="cfg.daily_price" type="number" min="0" />
-          </div>
-          <div class="cfg-field">
-            <label>Weekly Price (UGX)</label>
-            <input v-model.number="cfg.weekly_price" type="number" min="0" />
-          </div>
-        </div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>MTN Number</label>
-            <input v-model="cfg.mtn_number" type="text" placeholder="e.g. 0772000000" />
-          </div>
-          <div class="cfg-field">
-            <label>Airtel Number</label>
-            <input v-model="cfg.airtel_number" type="text" placeholder="e.g. 0752000000" />
-          </div>
-        </div>
+      <h3 class="vc-title">Group Management</h3>
+      <p class="editor-desc">Edit the betslip link and code for each package. These are assigned to users automatically on payment confirmation.</p>
+      <div v-if="groupsLoading" class="state-msg">Loading groups&hellip;</div>
+      <div v-else-if="groupsError" class="error-msg" style="padding:12px">{{ groupsError }}</div>
+      <div v-else class="groups-grid">
+        <div v-for="g in groups" :key="g.id" class="group-card" :class="{ 'special-group-card': g.isSpecial }">
+          <div class="group-title">{{ g.name }}</div>
+          <div class="group-meta">{{ g.oddsType }} Odds &middot; {{ planLabel(g.planType) }}</div>
 
-        <div class="cfg-section-label daily-label">&#128309; Daily Tier &mdash; Default Betslip</div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>Daily Betslip Link</label>
-            <input v-model="cfg.daily_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
-          </div>
-          <div class="cfg-field">
-            <label>Daily Betslip Code</label>
-            <input v-model="cfg.daily_betslip_code" type="text" placeholder="e.g. DAILY25" />
-          </div>
-        </div>
+          <!-- Special odds controls -->
+          <template v-if="g.isSpecial">
+            <div class="special-active-row">
+              <label class="toggle-label">
+                <input type="checkbox" v-model="groupEdits[g.id].isActive" />
+                <span class="toggle-text">{{ groupEdits[g.id].isActive ? '🟢 Visible to users today' : '⚫ Hidden from users' }}</span>
+              </label>
+            </div>
+            <div class="cfg-field" style="margin-bottom:10px">
+              <label>Today's Price (UGX)</label>
+              <input v-model.number="groupEdits[g.id].specialPrice" type="number" min="0" placeholder="Set today's price" />
+            </div>
+            <button class="reset-special-btn" :disabled="specialResetting[g.id]" @click="resetSpecial(g)" style="margin-bottom:10px">
+              {{ specialResetting[g.id] ? 'Resetting…' : '↺ Reset (hide & clear price)' }}
+            </button>
+          </template>
 
-        <div class="cfg-section-label weekly-label">&#128993; Weekly Tier &mdash; Default Betslip</div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>Weekly Betslip Link</label>
-            <input v-model="cfg.weekly_betslip_link" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
-          </div>
-          <div class="cfg-field">
-            <label>Weekly Betslip Code</label>
-            <input v-model="cfg.weekly_betslip_code" type="text" placeholder="e.g. WEEKLY25" />
-          </div>
-        </div>
+          <template v-else>
+            <div class="cfg-field" style="margin-bottom:10px">
+              <label>Price (UGX)</label>
+              <input v-model.number="groupEdits[g.id].price" type="number" min="0" />
+            </div>
+          </template>
 
-        <div class="cfg-section-label">&#9881; Other Settings</div>
-        <div class="cfg-row">
-          <div class="cfg-field">
-            <label>WhatsApp Community Link</label>
-            <input v-model="cfg.whatsapp_link" type="url" placeholder="https://chat.whatsapp.com/&hellip;" />
+          <div class="cfg-field" style="margin-bottom:10px">
+            <label>Betslip Link</label>
+            <input v-model="groupEdits[g.id].betslipLink" type="url" placeholder="https://betpawa.ug/share/&hellip;" />
           </div>
-          <div class="cfg-field">
-            <label>Video Ad URL</label>
-            <input v-model="cfg.ad_video_url" type="url" placeholder="https://youtu.be/&hellip;" />
+          <div class="cfg-field" style="margin-bottom:12px">
+            <label>Betslip Code</label>
+            <input v-model="groupEdits[g.id].betslipCode" type="text" placeholder="e.g. ABC123" />
           </div>
+          <button class="save-btn" :disabled="groupSaving[g.id]" @click="saveGroup(g)">
+            {{ groupSaving[g.id] ? 'Saving&hellip;' : '&#10003; Save' }}
+          </button>
+          <span v-if="groupSaved[g.id]" class="saved-msg">&#10003; Saved!</span>
+          <span v-if="groupSaveError[g.id]" class="error-msg">{{ groupSaveError[g.id] }}</span>
         </div>
-
-        <div class="cfg-actions">
-          <button type="submit" class="save-btn" :disabled="cfgSaving">{{ cfgSaving ? 'Saving&hellip;' : '&#10003; Save Settings' }}</button>
-          <span v-if="cfgSaved" class="saved-msg">&#10003; Saved!</span>
-          <span v-if="cfgError" class="error-msg">&#9888; {{ cfgError }}</span>
-        </div>
-      </form>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import axios from 'axios'
 import adminApi from '../../utils/adminApi'
 
 export default {
@@ -237,6 +240,7 @@ export default {
       loading: true,
       activeTier: 'daily',
       filterStatus: 'all',
+      filterOdds: 'all',
       filters: [
         { val: 'all',      label: 'All' },
         { val: 'pending',  label: 'Pending' },
@@ -252,40 +256,118 @@ export default {
       rejectReason:{},
       rejecting:   {},
       highlightId: null,
-      lightboxUrl: null,
-      cfg: {},
-      cfgLoading: true,
-      cfgSaving:  false,
-      cfgSaved:   false,
-      cfgError:   ''
+      // Groups management
+      groups:         [],
+      groupEdits:     {},
+      groupSaving:    {},
+      groupSaved:     {},
+      groupSaveError: {},
+      groupsLoading: true,
+      groupsError: '',
+      specialResetting: {},
+      reconciling: {},
+      reportLoading: false,
+      reportError: '',
+      reportRange: {
+        from: '',
+        to: '',
+      },
+      report: {
+        summary: { totalPayments: 0, totalAmount: 0 },
+        byStatus: [],
+        byMethod: [],
+        byPlan: []
+      }
     }
   },
   computed: {
     tierSubs() {
       return this.subscriptions.filter(s => s.planType === this.activeTier)
     },
+    oddsChips() {
+      const map = {
+        daily:   [{ val: 'all', label: 'All' }, { val: '5', label: '5 Odds' }],
+        weekly:  [{ val: 'all', label: 'All' }, { val: '5', label: '5 Odds' }, { val: '2', label: '2 Odds (Big Staker)' }],
+        monthly: [{ val: 'all', label: 'All' }, { val: '1.5', label: '1.5 Odds' }],
+        special: [{ val: 'all', label: 'All' }, { val: 'special', label: 'Special Odds' }]
+      }
+      return map[this.activeTier] || [{ val: 'all', label: 'All' }]
+    },
     displayed() {
-      if (this.filterStatus === 'all') return this.tierSubs
-      return this.tierSubs.filter(s => s.status === this.filterStatus)
+      let subs = this.tierSubs
+      if (this.filterOdds !== 'all') subs = subs.filter(s => (s.oddsType || '2') === this.filterOdds)
+      if (this.filterStatus !== 'all') subs = subs.filter(s => s.status === this.filterStatus)
+      return subs
     }
   },
   watch: {
     focusSubscriptionId(id) { if (id) this.focusOnSub(id) }
   },
   async mounted() {
-    await Promise.all([this.loadSubs(), this.loadConfig()])
+    await Promise.all([this.loadSubs(), this.fetchGroups(), this.fetchReport()])
     if (this.focusSubscriptionId) {
       this.$nextTick(() => this.focusOnSub(this.focusSubscriptionId))
     }
   },
   methods: {
+    normalizeSub(s) {
+      return {
+        ...s,
+        planType:         s.planType         ?? s.plan_type,
+        oddsType:         s.oddsType         ?? s.odds_type,
+        paymentMethod:    s.paymentMethod    ?? s.payment_method,
+        paymentReference: s.paymentReference ?? s.payment_reference,
+        rejectionReason:  s.rejectionReason  ?? s.rejection_reason,
+        betslipLink:      s.betslipLink      ?? s.betslip_link,
+        betslipCode:      s.betslipCode      ?? s.betslip_code,
+        expiresAt:        s.expiresAt        ?? s.expires_at,
+        createdAt:        s.createdAt        ?? s.created_at,
+        userName:         s.userName         ?? s.user?.username,
+        userPhone:        s.userPhone        ?? s.user?.phone,
+        transactionId:    s.transactionId    ?? s.payment?.transaction_id,
+      }
+    },
+    async fetchReport() {
+      this.reportLoading = true
+      this.reportError = ''
+      try {
+        const params = {}
+        if (this.reportRange.from) params.from = this.reportRange.from
+        if (this.reportRange.to) params.to = this.reportRange.to
+
+        const { data } = await adminApi.get('/api/payments/report', { params })
+        this.report = {
+          summary: data.summary || { totalPayments: 0, totalAmount: 0 },
+          byStatus: data.byStatus || [],
+          byMethod: data.byMethod || [],
+          byPlan: data.byPlan || []
+        }
+      } catch {
+        this.reportError = 'Could not load payments report.'
+      } finally {
+        this.reportLoading = false
+      }
+    },
+    async resetReportRange() {
+      this.reportRange.from = ''
+      this.reportRange.to = ''
+      await this.fetchReport()
+    },
+    reportStatusCount(status) {
+      const row = this.report.byStatus.find(x => x.status === status)
+      return Number(row?.count || 0)
+    },
+    reportStatusAmount(status) {
+      const row = this.report.byStatus.find(x => x.status === status)
+      return Number(row?.amount || 0)
+    },
     async loadSubs() {
       this.loading = true
       try {
         const { data } = await adminApi.get('/api/subscriptions')
-        this.subscriptions = data
-        data.forEach(s => {
-          if (!this.confirm[s.id])      this.confirm[s.id]      = { betslipLink: '', betslipCode: '' }
+        const normalized = data.map(s => this.normalizeSub(s))
+        this.subscriptions = normalized
+        normalized.forEach(s => {
           if (!this.rejectReason[s.id]) this.rejectReason[s.id] = ''
           if (this.rejectOpen[s.id] === undefined) this.rejectOpen[s.id] = false
         })
@@ -295,16 +377,63 @@ export default {
         this.loading = false
       }
     },
-    async loadConfig() {
-      this.cfgLoading = true
+    async fetchGroups() {
+      this.groupsLoading = true
+      this.groupsError = ''
       try {
-        const { data } = await axios.get('/api/config/vip-config')
-        this.cfg = { ...data }
+        const { data } = await adminApi.get('/api/groups/admin')
+        this.groups = data
+        data.forEach(g => {
+          this.groupEdits[g.id] = {
+            price:        g.price,
+            betslipLink:  g.betslipLink  || '',
+            betslipCode:  g.betslipCode  || '',
+            isActive:     g.isActive     !== false,
+            specialPrice: g.specialPrice != null ? g.specialPrice : ''
+          }
+        })
       } catch {
-        this.cfg = {}
+        this.groupsError = 'Could not load groups.'
       } finally {
-        this.cfgLoading = false
+        this.groupsLoading = false
       }
+    },
+    async saveGroup(g) {
+      this.groupSaving      = { ...this.groupSaving,      [g.id]: true }
+      this.groupSaved       = { ...this.groupSaved,       [g.id]: false }
+      this.groupSaveError   = { ...this.groupSaveError,   [g.id]: '' }
+      try {
+        const edits = this.groupEdits[g.id]
+        const payload = {
+          betslipLink:  edits.betslipLink,
+          betslipCode:  edits.betslipCode
+        }
+        if (g.isSpecial) {
+          payload.isActive     = edits.isActive
+          payload.specialPrice = edits.specialPrice !== '' ? edits.specialPrice : null
+        } else {
+          payload.price = edits.price
+        }
+        const { data } = await adminApi.patch('/api/groups/' + g.id, payload)
+        const idx = this.groups.findIndex(x => x.id === g.id)
+        if (idx !== -1) this.groups.splice(idx, 1, data)
+        this.groupSaved = { ...this.groupSaved, [g.id]: true }
+        setTimeout(() => { this.groupSaved = { ...this.groupSaved, [g.id]: false } }, 3000)
+      } catch {
+        this.groupSaveError = { ...this.groupSaveError, [g.id]: 'Save failed.' }
+      } finally {
+        this.groupSaving = { ...this.groupSaving, [g.id]: false }
+      }
+    },
+    planLabel(planType) {
+      return { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', special: 'Special' }[planType] || planType
+    },
+    async resetSpecial(g) {
+      this.specialResetting = { ...this.specialResetting, [g.id]: true }
+      this.groupEdits[g.id].isActive     = false
+      this.groupEdits[g.id].specialPrice = ''
+      await this.saveGroup(g)
+      this.specialResetting = { ...this.specialResetting, [g.id]: false }
     },
     countByTier(tier) {
       return this.subscriptions.filter(s => s.planType === tier).length
@@ -312,6 +441,10 @@ export default {
     countByStatus(val) {
       if (val === 'all') return this.tierSubs.length
       return this.tierSubs.filter(s => s.status === val).length
+    },
+    countByOdds(val) {
+      if (val === 'all') return this.tierSubs.length
+      return this.tierSubs.filter(s => (s.oddsType || '2') === val).length
     },
     formatDate(ts) {
       if (!ts) return '\u2014'
@@ -323,7 +456,8 @@ export default {
     focusOnSub(id) {
       const sub = this.subscriptions.find(s => s.id === id)
       if (!sub) return
-      this.activeTier = sub.planType || 'daily'
+      this.activeTier   = sub.planType || 'daily'
+      this.filterOdds   = 'all'
       this.filterStatus = 'all'
       this.highlightId = id
       this.$nextTick(() => {
@@ -332,20 +466,6 @@ export default {
         if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
         setTimeout(() => { this.highlightId = null }, 3000)
       })
-    },
-    async confirmSub(sub) {
-      this.confirming = { ...this.confirming, [sub.id]: true }
-      try {
-        const { betslipLink, betslipCode } = this.confirm[sub.id]
-        const { data } = await adminApi.patch('/api/subscriptions/' + sub.id, {
-          status: 'active', betslipLink, betslipCode
-        })
-        this.updateSub(sub.id, data)
-      } catch {
-        alert('Confirm failed.')
-      } finally {
-        this.confirming = { ...this.confirming, [sub.id]: false }
-      }
     },
     async renewSub(sub) {
       this.renewing = { ...this.renewing, [sub.id]: true }
@@ -394,7 +514,36 @@ export default {
     },
     updateSub(id, newData) {
       const idx = this.subscriptions.findIndex(s => s.id === id)
-      if (idx !== -1) this.subscriptions.splice(idx, 1, { ...this.subscriptions[idx], ...newData })
+      if (idx !== -1) {
+        this.subscriptions.splice(idx, 1, this.normalizeSub({ ...this.subscriptions[idx], ...newData }))
+      }
+    },
+    async reconcileSub(sub, status) {
+      const actionLabel = status === 'success' ? 'mark this payment as confirmed' : 'mark this payment as failed'
+      if (!confirm('Are you sure you want to ' + actionLabel + '?')) return
+
+      let transactionId = null
+      if (status === 'success') {
+        transactionId = prompt('Enter provider transaction ID (optional):', sub.transactionId || '')
+        if (transactionId === null) return
+      }
+
+      this.reconciling = { ...this.reconciling, [sub.id]: true }
+      try {
+        const payload = {
+          reference: sub.paymentReference,
+          subscriptionId: sub.id,
+          status,
+          transactionId: transactionId || null,
+        }
+        const { data } = await adminApi.post('/api/payments/reconcile', payload)
+        if (data?.subscription) this.updateSub(sub.id, data.subscription)
+        await this.fetchReport()
+      } catch {
+        alert('Reconcile failed. Please try again.')
+      } finally {
+        this.reconciling = { ...this.reconciling, [sub.id]: false }
+      }
     },
     async deleteSub(id) {
       if (!confirm('Delete this subscription record?')) return
@@ -403,20 +552,6 @@ export default {
         this.subscriptions = this.subscriptions.filter(s => s.id !== id)
       } catch {
         alert('Delete failed.')
-      }
-    },
-    async saveConfig() {
-      this.cfgSaving = true
-      this.cfgSaved  = false
-      this.cfgError  = ''
-      try {
-        await adminApi.put('/api/config/vip-config', this.cfg)
-        this.cfgSaved = true
-        setTimeout(() => { this.cfgSaved = false }, 3000)
-      } catch {
-        this.cfgError = 'Save failed.'
-      } finally {
-        this.cfgSaving = false
       }
     }
   }
@@ -429,14 +564,41 @@ export default {
 .state-msg { font-size: 14px; color: #888; padding: 12px; }
 .empty-state { padding: 32px; text-align: center; color: #555; font-size: 14px; background: #111; border-radius: 10px; margin-bottom: 24px; }
 
+/* Report */
+.report-wrap { background: #101010; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 18px; }
+.report-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.report-title { margin: 0; font-size: 14px; color: #fff; font-weight: 800; letter-spacing: 0.4px; }
+.report-actions { display: flex; gap: 8px; align-items: center; }
+.report-refresh { padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255,215,0,0.25); background: rgba(255,215,0,0.08); color: #FFD700; font-size: 12px; font-weight: 700; cursor: pointer; }
+.report-refresh:disabled { opacity: 0.55; cursor: not-allowed; }
+.report-filter-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
+.report-filter-field { display: flex; flex-direction: column; gap: 4px; }
+.report-filter-field label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.report-filter-field input { background: #161616; border: 1px solid rgba(255,255,255,0.12); color: #ddd; border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+.report-apply,
+.report-reset { padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.report-apply { border: 1px solid rgba(79,195,247,0.35); background: rgba(79,195,247,0.08); color: #4fc3f7; }
+.report-reset { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); color: #bbb; }
+.report-apply:disabled,
+.report-reset:disabled { opacity: 0.55; cursor: not-allowed; }
+.report-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }
+.report-card { background: #161616; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
+.report-label { font-size: 11px; color: #9a9a9a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.report-value { font-size: 18px; color: #fff; font-weight: 800; }
+.report-sub { display: inline-block; font-size: 11px; color: #9a9a9a; font-weight: 600; margin-left: 4px; }
+
 /* Tier tabs */
 .tier-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
 .tier-tab { display: flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 24px; border: 2px solid transparent; background: #111; color: #888; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-.daily-tab.active  { border-color: #4fc3f7; color: #4fc3f7; background: rgba(79,195,247,0.08); }
-.weekly-tab.active { border-color: #FFD700; color: #FFD700; background: rgba(255,215,0,0.08); }
+.daily-tab.active   { border-color: #4fc3f7; color: #4fc3f7; background: rgba(79,195,247,0.08); }
+.weekly-tab.active  { border-color: #FFD700; color: #FFD700; background: rgba(255,215,0,0.08); }
+.monthly-tab.active { border-color: #fb8c00; color: #fb8c00; background: rgba(251,140,0,0.08); }
+.special-tab.active { border-color: #ab47bc; color: #ab47bc; background: rgba(171,71,188,0.08); }
 .tier-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.daily-dot  { background: #4fc3f7; }
-.weekly-dot { background: #FFD700; }
+.daily-dot   { background: #4fc3f7; }
+.weekly-dot  { background: #FFD700; }
+.monthly-dot { background: #fb8c00; }
+.special-dot { background: #ab47bc; }
 .tier-count { background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 
 /* Filter toolbar */
@@ -454,8 +616,10 @@ export default {
 
 /* Tier ribbon */
 .tier-ribbon { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; padding: 3px 10px; border-radius: 8px; margin-bottom: 10px; }
-.daily-ribbon  { background: rgba(79,195,247,0.12); color: #4fc3f7; }
-.weekly-ribbon { background: rgba(255,215,0,0.12);  color: #FFD700; }
+.daily-ribbon   { background: rgba(79,195,247,0.12);  color: #4fc3f7; }
+.weekly-ribbon  { background: rgba(255,215,0,0.12);   color: #FFD700; }
+.monthly-ribbon { background: rgba(251,140,0,0.12);   color: #fb8c00; }
+.special-ribbon { background: rgba(171,71,188,0.12);  color: #ab47bc; }
 
 .sub-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .sub-user { display: flex; flex-direction: column; gap: 4px; }
@@ -463,14 +627,17 @@ export default {
 .sub-phone { font-size: 12px; color: #888; }
 .sub-meta  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .plan-tag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; }
-.plan-tag.daily  { background: rgba(79,195,247,0.1);  color: #4fc3f7; }
-.plan-tag.weekly { background: rgba(255,215,0,0.1);   color: #FFD700; }
+.plan-tag.daily   { background: rgba(79,195,247,0.1);   color: #4fc3f7; }
+.plan-tag.weekly  { background: rgba(255,215,0,0.1);    color: #FFD700; }
+.plan-tag.monthly { background: rgba(251,140,0,0.1);    color: #fb8c00; }
+.plan-tag.special { background: rgba(171,71,188,0.1);   color: #ab47bc; }
 .sub-amount { font-size: 13px; font-weight: 700; color: #fff; }
 .status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; }
 .st-pending  { background: rgba(255,165,0,0.1);   color: #FFA500; }
 .st-active   { background: rgba(0,200,83,0.1);    color: #00c853; }
 .st-rejected { background: rgba(255,82,82,0.1);   color: #ff5252; }
 .st-expired  { background: rgba(255,255,255,0.05); color: #555; }
+.st-failed   { background: rgba(255,82,82,0.07);  color: #ff7070; }
 .sub-details { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .detail-row { font-size: 12px; color: #888; }
 .detail-row strong { color: #aaa; }
@@ -492,8 +659,10 @@ export default {
 .action-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .renew-btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
 .renew-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.daily-renew  { background: rgba(79,195,247,0.15); color: #4fc3f7; border: 1px solid rgba(79,195,247,0.3); }
-.weekly-renew { background: rgba(255,215,0,0.12);  color: #FFD700; border: 1px solid rgba(255,215,0,0.3); }
+.daily-renew   { background: rgba(79,195,247,0.15);  color: #4fc3f7; border: 1px solid rgba(79,195,247,0.3); }
+.weekly-renew  { background: rgba(255,215,0,0.12);   color: #FFD700; border: 1px solid rgba(255,215,0,0.3); }
+.monthly-renew { background: rgba(251,140,0,0.12);   color: #fb8c00; border: 1px solid rgba(251,140,0,0.3); }
+.special-renew { background: rgba(171,71,188,0.12);  color: #ab47bc; border: 1px solid rgba(171,71,188,0.3); }
 .revoke-btn { padding: 8px 18px; background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.25); color: #ff5252; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
 .revoke-btn:hover { background: rgba(255,82,82,0.2); }
 .revoke-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -530,6 +699,36 @@ export default {
 .icon-del { position: absolute; top: 14px; right: 16px; background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.5; transition: opacity 0.2s; }
 .icon-del:hover { opacity: 1; }
 
+/* Payment reference */
+.payment-ref-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.payment-ref { background: #1a1a1a; padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #aaa; word-break: break-all; }
+
+/* Pending info panel (replaces confirm panel) */
+.pending-info-panel { background: rgba(255,165,0,0.05); border: 1px solid rgba(255,165,0,0.2); border-radius: 10px; padding: 14px; margin-top: 12px; }
+.pending-info-msg { font-size: 13px; color: #ffb347; margin: 0; }
+.pending-actions { display: flex; gap: 8px; margin-top: 12px; }
+.pending-activate-btn,
+.pending-fail-btn { padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent; }
+.pending-activate-btn { background: rgba(0,200,83,0.12); border-color: rgba(0,200,83,0.3); color: #00c853; }
+.pending-fail-btn { background: rgba(255,82,82,0.10); border-color: rgba(255,82,82,0.25); color: #ff6b6b; }
+.pending-activate-btn:disabled,
+.pending-fail-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Groups grid */
+.groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.group-card { background: #111; border: 1px solid rgba(255,215,0,0.12); border-radius: 12px; padding: 18px; }
+.group-card.special-group-card { border-color: rgba(171,71,188,0.35); }
+.group-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.group-meta { font-size: 11px; color: #666; margin-bottom: 14px; }
+
+/* Special group controls */
+.special-active-row { margin-bottom: 12px; }
+.toggle-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: #ccc; }
+.toggle-label input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #ab47bc; }
+.reset-special-btn { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: #888; border-radius: 8px; padding: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.reset-special-btn:hover:not(:disabled) { background: rgba(255,82,82,0.08); border-color: rgba(255,82,82,0.25); color: #ff7272; }
+.reset-special-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Lightbox */
 .lightbox-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.88); display: flex; align-items: center; justify-content: center; }
 .lightbox-box { position: relative; max-width: 90vw; max-height: 90vh; }
@@ -558,5 +757,25 @@ export default {
   .cp-fields, .cfg-row { grid-template-columns: 1fr; }
   .sub-top { flex-direction: column; }
   .tier-tabs { flex-direction: column; }
+  .report-grid { grid-template-columns: 1fr 1fr; }
+  .pending-actions { flex-direction: column; }
+  .report-filter-row { align-items: stretch; }
 }
+
+/* Odds sub-filter chips */
+.odds-filter-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px; }
+.odds-chip { background: #111; border: 1px solid rgba(255,255,255,0.08); color: #888; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 16px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 5px; }
+.odds-chip.active { border-color: #a78bfa; color: #a78bfa; background: rgba(167,139,250,0.08); }
+.odds-chip .count { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 8px; font-size: 10px; }
+
+/* Tier ribbon row */
+.tier-ribbon-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.odds-ribbon { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; padding: 3px 10px; border-radius: 8px; background: rgba(167,139,250,0.12); color: #a78bfa; }
+
+/* Package config labels */
+.pkg-label { margin-top: 16px; }
+.pkg-1-5 { color: #4fc3f7; }
+.pkg-2   { color: var(--gold, #FFD700); }
+.pkg-5   { color: #ff7043; }
+.cfg-field-full { grid-column: 1 / -1; }
 </style>

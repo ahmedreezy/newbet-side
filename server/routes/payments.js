@@ -85,4 +85,85 @@ router.get('/:id', auth, async (req, res) => {
   }
 })
 
+// POST mobile money webhook callback (no auth — must return 200 always)
+// Jpesa sends an XML POST to this URL (Content-Type: text/xml)
+router.post('/webhook', express.raw({ type: ['application/json', 'text/xml', 'application/xml', 'text/plain', '*/*'] }), async (req, res) => {
+  try {
+    const raw = typeof req.body === 'string' ? req.body : req.body.toString('utf8')
+
+    // ── Parse payload — Jpesa sends XML, fall back to JSON ──────────────────
+    let reference = '', status = '', transactionId = ''
+
+    if (raw.trim().startsWith('<')) {
+      // XML response from Jpesa — extract fields with simple regex (no extra deps)
+      const tag = (name) => {
+        const m = raw.match(new RegExp(`<${name}[^>]*>([^<]*)</${name}>`, 'i'))
+        return m ? m[1].trim() : ''
+      }
+      reference     = tag('tx') || tag('reference') || tag('order_id')
+      status        = tag('status') || tag('payment_status')
+      transactionId = tag('transaction_id') || tag('txn_id') || tag('mpesa_code') || tag('code')
+    } else {
+      // JSON fallback
+      let payload = {}
+      try { payload = JSON.parse(raw) } catch { return res.status(200).send('OK') }
+      reference     = payload.tx || payload.reference || payload.external_reference || payload.order_id || ''
+      status        = payload.status || payload.payment_status || ''
+      transactionId = payload.transaction_id || payload.txn_id || payload.mpesa_code || ''
+    }
+
+    status = status.toLowerCase()
+    if (!reference) return res.status(200).send('OK')
+
+    // Find matching pending subscription
+    const { rows } = await pool.query(
+      `SELECT s.*, g.plan_type AS g_plan_type, g.betslip_link AS g_betslip_link, g.betslip_code AS g_betslip_code
+       FROM subscriptions s
+       LEFT JOIN groups g ON g.id = s.group_id
+       WHERE s.payment_reference = $1 AND s.status = 'pending'
+       LIMIT 1`,
+      [reference]
+    )
+
+    if (rows.length === 0) return res.status(200).send('OK')
+    const sub = rows[0]
+
+    const isSuccess = ['success', 'successful', 'completed', 'paid'].includes(status)
+    const isFailure = ['failed', 'failure', 'cancelled', 'rejected', 'declined'].includes(status)
+
+    if (isSuccess) {
+      const intervalMap = { daily: '24 hours', weekly: '7 days', monthly: '30 days', special: '24 hours' }
+      const interval    = intervalMap[sub.plan_type] || '24 hours'
+      const betslipLink = sub.g_betslip_link || sub.betslip_link || ''
+      const betslipCode = sub.g_betslip_code || sub.betslip_code || ''
+
+      await pool.query(
+        `UPDATE subscriptions SET
+           status       = 'active',
+           betslip_link = $1,
+           betslip_code = $2,
+           started_at   = NOW(),
+           expires_at   = NOW() + $3::interval
+         WHERE id = $4`,
+        [betslipLink, betslipCode, interval, sub.id]
+      )
+      await pool.query(
+        `UPDATE payments SET status = 'confirmed', transaction_id = $1
+         WHERE subscription_id = $2 AND status = 'pending'`,
+        [transactionId, sub.id]
+      )
+      console.info(`[Webhook] Subscription ${sub.id} activated. ref=${reference} txn=${transactionId}`)
+    } else if (isFailure) {
+      await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE id = $1`, [sub.id])
+      await pool.query(`UPDATE payments SET status = 'failed' WHERE subscription_id = $1`, [sub.id])
+      console.info(`[Webhook] Payment failed for subscription ${sub.id}. ref=${reference}`)
+    }
+
+    res.status(200).send('OK')
+  } catch (err) {
+    console.error('[Webhook] Error:', err)
+    res.status(200).send('OK')
+  }
+})
+
 module.exports = router

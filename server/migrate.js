@@ -24,6 +24,7 @@ async function migrate() {
         id               SERIAL PRIMARY KEY,
         user_id          INTEGER REFERENCES users(id) ON DELETE CASCADE,
         plan_type        VARCHAR(20)  NOT NULL,
+        odds_type        VARCHAR(20)  NOT NULL DEFAULT '2',
         payment_method   VARCHAR(20)  NOT NULL,
         phone            VARCHAR(30)  DEFAULT '',
         amount           NUMERIC       NOT NULL,
@@ -32,6 +33,7 @@ async function migrate() {
         rejection_reason TEXT,
         betslip_link     VARCHAR(500) DEFAULT '',
         betslip_code     VARCHAR(100) DEFAULT '',
+        secret_code_hash VARCHAR(255) DEFAULT '',
         started_at       TIMESTAMPTZ,
         expires_at       TIMESTAMPTZ,
         created_at       TIMESTAMPTZ DEFAULT NOW()
@@ -124,7 +126,68 @@ async function migrate() {
         updated_at  TIMESTAMPTZ  DEFAULT NOW()
       );
     `)
-    console.log('✓ Migration complete — all tables created.')
+    console.log('✓ Tables created/verified.')
+
+    // Column additions for schema evolution — safe to run on existing DBs
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash          VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer_hash  VARCHAR(255);
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_link     VARCHAR(500) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_code     VARCHAR(100) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS proof_url        VARCHAR(500);
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at       TIMESTAMPTZ;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at       TIMESTAMPTZ;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS secret_code_hash VARCHAR(255) DEFAULT '';
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS odds_type        VARCHAR(20)  DEFAULT '2';
+    `)
+    console.log('✓ Core column migrations applied.')
+
+    // ─── Groups table (VIP packages) ────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groups (
+        id            SERIAL PRIMARY KEY,
+        name          VARCHAR(100) UNIQUE NOT NULL,
+        odds_type     VARCHAR(20)  NOT NULL,
+        plan_type     VARCHAR(20)  NOT NULL,
+        price         NUMERIC(12,2) NOT NULL DEFAULT 0,
+        betslip_link  VARCHAR(500)  NOT NULL DEFAULT '',
+        betslip_code  VARCHAR(100)  NOT NULL DEFAULT '',
+        is_special    BOOLEAN       NOT NULL DEFAULT FALSE,
+        is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
+        special_price NUMERIC(12,2),
+        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `)
+
+    // Ensure groups columns exist if table was already created without them
+    await client.query(`
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_special    BOOLEAN      NOT NULL DEFAULT FALSE;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_active     BOOLEAN      NOT NULL DEFAULT TRUE;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_price NUMERIC(12,2);
+    `)
+
+    // Ensure UNIQUE constraint on groups.name exists (for ON CONFLICT upserts)
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'groups'::regclass AND conname = 'groups_name_key'
+        ) THEN
+          ALTER TABLE groups ADD CONSTRAINT groups_name_key UNIQUE (name);
+        END IF;
+      END $$;
+    `)
+
+    // ─── Link subscriptions → groups + payment references ───────────────────
+    await client.query(`
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS group_id          INTEGER REFERENCES groups(id) ON DELETE SET NULL;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS transaction_id    VARCHAR(200);
+    `)
+    console.log('✓ Migration complete — all tables and columns up to date.')
   } finally {
     client.release()
   }

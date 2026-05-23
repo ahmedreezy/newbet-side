@@ -22,14 +22,19 @@
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input
-            id="password"
-            v-model="password"
-            type="password"
-            placeholder="Enter password"
-            autocomplete="current-password"
-            required
-          />
+          <div class="pw-wrap">
+            <input
+              id="password"
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Enter password"
+              autocomplete="current-password"
+              required
+            />
+            <button type="button" class="pw-eye" @click="showPassword = !showPassword" tabindex="-1">
+              {{ showPassword ? '🙈' : '👁' }}
+            </button>
+          </div>
         </div>
 
         <p v-if="error" class="error-msg">⚠ {{ error }}</p>
@@ -54,6 +59,7 @@ export default {
     return {
       username: '',
       password: '',
+      showPassword: false,
       loading: false,
       error: ''
     }
@@ -70,7 +76,8 @@ export default {
         localStorage.setItem('adminToken', data.token)
         this.$router.push('/admin/dashboard')
       } catch (err) {
-        this.error = err.response?.data?.error || 'Invalid username or password.'
+        const payload = err.response?.data || {}
+        this.error = payload.errors?.username?.[0] || payload.error || 'Invalid username or password.'
       } finally {
         this.loading = false
       }
@@ -158,6 +165,16 @@ export default {
   border-color: rgba(255, 215, 0, 0.5);
 }
 .field input::placeholder { color: var(--text-muted); opacity: 0.6; }
+
+.pw-wrap { position: relative; display: flex; align-items: center; }
+.pw-wrap input { flex: 1; padding-right: 44px; }
+.pw-eye {
+  position: absolute; right: 12px;
+  background: none; border: none; cursor: pointer;
+  font-size: 16px; color: var(--text-muted);
+  padding: 0; line-height: 1;
+}
+.pw-eye:hover { color: var(--gold, #FFD700); }
 
 .error-msg {
   color: #ff5252;
