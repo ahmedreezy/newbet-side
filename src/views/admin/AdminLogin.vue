@@ -76,7 +76,8 @@ export default {
         localStorage.setItem('adminToken', data.token)
         this.$router.push('/admin/dashboard')
       } catch (err) {
-        this.error = err.response?.data?.error || 'Invalid username or password.'
+        const payload = err.response?.data || {}
+        this.error = payload.errors?.username?.[0] || payload.error || 'Invalid username or password.'
       } finally {
         this.loading = false
       }
