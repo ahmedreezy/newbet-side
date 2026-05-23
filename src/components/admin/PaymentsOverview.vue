@@ -4,6 +4,54 @@
       Review payment submissions and confirm access. Subscriptions are separated by Daily and Weekly tiers, and further by odds package (1.5, 2, or 5 Odds) with individual betslip codes per package.
     </p>
 
+    <div class="report-wrap">
+      <div class="report-head">
+        <h3 class="report-title">Payments Report</h3>
+        <div class="report-actions">
+          <button class="report-refresh" @click="fetchReport" :disabled="reportLoading">
+            {{ reportLoading ? 'Refreshing…' : 'Refresh Report' }}
+          </button>
+        </div>
+      </div>
+      <div class="report-filter-row">
+        <div class="report-filter-field">
+          <label>From</label>
+          <input v-model="reportRange.from" type="date" />
+        </div>
+        <div class="report-filter-field">
+          <label>To</label>
+          <input v-model="reportRange.to" type="date" />
+        </div>
+        <button class="report-apply" @click="fetchReport" :disabled="reportLoading">Apply</button>
+        <button class="report-reset" @click="resetReportRange" :disabled="reportLoading">Reset</button>
+      </div>
+      <div v-if="reportError" class="error-msg" style="padding:8px 0">{{ reportError }}</div>
+      <div v-else class="report-grid">
+        <div class="report-card">
+          <div class="report-label">Total Payments</div>
+          <div class="report-value">{{ report.summary.totalPayments }}</div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Total Amount</div>
+          <div class="report-value">{{ Number(report.summary.totalAmount || 0).toLocaleString() }} UGX</div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Confirmed</div>
+          <div class="report-value">
+            {{ reportStatusCount('confirmed') }}
+            <span class="report-sub">({{ Number(reportStatusAmount('confirmed')).toLocaleString() }} UGX)</span>
+          </div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Pending</div>
+          <div class="report-value">
+            {{ reportStatusCount('pending') }}
+            <span class="report-sub">({{ Number(reportStatusAmount('pending')).toLocaleString() }} UGX)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Tier tabs -->
     <div class="tier-tabs">
       <button :class="['tier-tab','daily-tab',{active:activeTier==='daily'}]" @click="activeTier='daily';filterOdds='all'">
@@ -110,6 +158,14 @@
         <!-- Pending: show reference info only (activation is automatic) -->
         <div v-if="s.status === 'pending'" class="confirm-panel pending-info-panel">
           <p class="pending-info-msg">&#9203; Waiting for payment confirmation from the provider. This will activate automatically.</p>
+          <div class="pending-actions">
+            <button class="pending-activate-btn" @click="reconcileSub(s, 'success')" :disabled="reconciling[s.id]">
+              {{ reconciling[s.id] ? 'Applying…' : 'Mark as Paid' }}
+            </button>
+            <button class="pending-fail-btn" @click="reconcileSub(s, 'failed')" :disabled="reconciling[s.id]">
+              {{ reconciling[s.id] ? 'Applying…' : 'Mark Failed' }}
+            </button>
+          </div>
         </div>
 
         <button v-if="s.status !== 'pending'" class="icon-del" @click="deleteSub(s.id)" title="Remove">&#128465;</button>
@@ -208,7 +264,20 @@ export default {
       groupSaveError: {},
       groupsLoading: true,
       groupsError: '',
-      specialResetting: {}
+      specialResetting: {},
+      reconciling: {},
+      reportLoading: false,
+      reportError: '',
+      reportRange: {
+        from: '',
+        to: '',
+      },
+      report: {
+        summary: { totalPayments: 0, totalAmount: 0 },
+        byStatus: [],
+        byMethod: [],
+        byPlan: []
+      }
     }
   },
   computed: {
@@ -235,18 +304,70 @@ export default {
     focusSubscriptionId(id) { if (id) this.focusOnSub(id) }
   },
   async mounted() {
-    await Promise.all([this.loadSubs(), this.fetchGroups()])
+    await Promise.all([this.loadSubs(), this.fetchGroups(), this.fetchReport()])
     if (this.focusSubscriptionId) {
       this.$nextTick(() => this.focusOnSub(this.focusSubscriptionId))
     }
   },
   methods: {
+    normalizeSub(s) {
+      return {
+        ...s,
+        planType:         s.planType         ?? s.plan_type,
+        oddsType:         s.oddsType         ?? s.odds_type,
+        paymentMethod:    s.paymentMethod    ?? s.payment_method,
+        paymentReference: s.paymentReference ?? s.payment_reference,
+        rejectionReason:  s.rejectionReason  ?? s.rejection_reason,
+        betslipLink:      s.betslipLink      ?? s.betslip_link,
+        betslipCode:      s.betslipCode      ?? s.betslip_code,
+        expiresAt:        s.expiresAt        ?? s.expires_at,
+        createdAt:        s.createdAt        ?? s.created_at,
+        userName:         s.userName         ?? s.user?.username,
+        userPhone:        s.userPhone        ?? s.user?.phone,
+        transactionId:    s.transactionId    ?? s.payment?.transaction_id,
+      }
+    },
+    async fetchReport() {
+      this.reportLoading = true
+      this.reportError = ''
+      try {
+        const params = {}
+        if (this.reportRange.from) params.from = this.reportRange.from
+        if (this.reportRange.to) params.to = this.reportRange.to
+
+        const { data } = await adminApi.get('/api/payments/report', { params })
+        this.report = {
+          summary: data.summary || { totalPayments: 0, totalAmount: 0 },
+          byStatus: data.byStatus || [],
+          byMethod: data.byMethod || [],
+          byPlan: data.byPlan || []
+        }
+      } catch {
+        this.reportError = 'Could not load payments report.'
+      } finally {
+        this.reportLoading = false
+      }
+    },
+    async resetReportRange() {
+      this.reportRange.from = ''
+      this.reportRange.to = ''
+      await this.fetchReport()
+    },
+    reportStatusCount(status) {
+      const row = this.report.byStatus.find(x => x.status === status)
+      return Number(row?.count || 0)
+    },
+    reportStatusAmount(status) {
+      const row = this.report.byStatus.find(x => x.status === status)
+      return Number(row?.amount || 0)
+    },
     async loadSubs() {
       this.loading = true
       try {
         const { data } = await adminApi.get('/api/subscriptions')
-        this.subscriptions = data
-        data.forEach(s => {
+        const normalized = data.map(s => this.normalizeSub(s))
+        this.subscriptions = normalized
+        normalized.forEach(s => {
           if (!this.rejectReason[s.id]) this.rejectReason[s.id] = ''
           if (this.rejectOpen[s.id] === undefined) this.rejectOpen[s.id] = false
         })
@@ -393,7 +514,36 @@ export default {
     },
     updateSub(id, newData) {
       const idx = this.subscriptions.findIndex(s => s.id === id)
-      if (idx !== -1) this.subscriptions.splice(idx, 1, { ...this.subscriptions[idx], ...newData })
+      if (idx !== -1) {
+        this.subscriptions.splice(idx, 1, this.normalizeSub({ ...this.subscriptions[idx], ...newData }))
+      }
+    },
+    async reconcileSub(sub, status) {
+      const actionLabel = status === 'success' ? 'mark this payment as confirmed' : 'mark this payment as failed'
+      if (!confirm('Are you sure you want to ' + actionLabel + '?')) return
+
+      let transactionId = null
+      if (status === 'success') {
+        transactionId = prompt('Enter provider transaction ID (optional):', sub.transactionId || '')
+        if (transactionId === null) return
+      }
+
+      this.reconciling = { ...this.reconciling, [sub.id]: true }
+      try {
+        const payload = {
+          reference: sub.paymentReference,
+          subscriptionId: sub.id,
+          status,
+          transactionId: transactionId || null,
+        }
+        const { data } = await adminApi.post('/api/payments/reconcile', payload)
+        if (data?.subscription) this.updateSub(sub.id, data.subscription)
+        await this.fetchReport()
+      } catch {
+        alert('Reconcile failed. Please try again.')
+      } finally {
+        this.reconciling = { ...this.reconciling, [sub.id]: false }
+      }
     },
     async deleteSub(id) {
       if (!confirm('Delete this subscription record?')) return
@@ -413,6 +563,29 @@ export default {
 .editor-desc { font-size: 14px; color: #888; margin-bottom: 20px; line-height: 1.6; }
 .state-msg { font-size: 14px; color: #888; padding: 12px; }
 .empty-state { padding: 32px; text-align: center; color: #555; font-size: 14px; background: #111; border-radius: 10px; margin-bottom: 24px; }
+
+/* Report */
+.report-wrap { background: #101010; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 18px; }
+.report-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.report-title { margin: 0; font-size: 14px; color: #fff; font-weight: 800; letter-spacing: 0.4px; }
+.report-actions { display: flex; gap: 8px; align-items: center; }
+.report-refresh { padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255,215,0,0.25); background: rgba(255,215,0,0.08); color: #FFD700; font-size: 12px; font-weight: 700; cursor: pointer; }
+.report-refresh:disabled { opacity: 0.55; cursor: not-allowed; }
+.report-filter-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
+.report-filter-field { display: flex; flex-direction: column; gap: 4px; }
+.report-filter-field label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.report-filter-field input { background: #161616; border: 1px solid rgba(255,255,255,0.12); color: #ddd; border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+.report-apply,
+.report-reset { padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.report-apply { border: 1px solid rgba(79,195,247,0.35); background: rgba(79,195,247,0.08); color: #4fc3f7; }
+.report-reset { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); color: #bbb; }
+.report-apply:disabled,
+.report-reset:disabled { opacity: 0.55; cursor: not-allowed; }
+.report-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }
+.report-card { background: #161616; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
+.report-label { font-size: 11px; color: #9a9a9a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.report-value { font-size: 18px; color: #fff; font-weight: 800; }
+.report-sub { display: inline-block; font-size: 11px; color: #9a9a9a; font-weight: 600; margin-left: 4px; }
 
 /* Tier tabs */
 .tier-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
@@ -533,6 +706,13 @@ export default {
 /* Pending info panel (replaces confirm panel) */
 .pending-info-panel { background: rgba(255,165,0,0.05); border: 1px solid rgba(255,165,0,0.2); border-radius: 10px; padding: 14px; margin-top: 12px; }
 .pending-info-msg { font-size: 13px; color: #ffb347; margin: 0; }
+.pending-actions { display: flex; gap: 8px; margin-top: 12px; }
+.pending-activate-btn,
+.pending-fail-btn { padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent; }
+.pending-activate-btn { background: rgba(0,200,83,0.12); border-color: rgba(0,200,83,0.3); color: #00c853; }
+.pending-fail-btn { background: rgba(255,82,82,0.10); border-color: rgba(255,82,82,0.25); color: #ff6b6b; }
+.pending-activate-btn:disabled,
+.pending-fail-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Groups grid */
 .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
@@ -577,6 +757,9 @@ export default {
   .cp-fields, .cfg-row { grid-template-columns: 1fr; }
   .sub-top { flex-direction: column; }
   .tier-tabs { flex-direction: column; }
+  .report-grid { grid-template-columns: 1fr 1fr; }
+  .pending-actions { flex-direction: column; }
+  .report-filter-row { align-items: stretch; }
 }
 
 /* Odds sub-filter chips */
