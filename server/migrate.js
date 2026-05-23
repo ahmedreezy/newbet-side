@@ -130,7 +130,8 @@ async function migrate() {
 
     // Column additions for schema evolution — safe to run on existing DBs
     await client.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash          VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer_hash  VARCHAR(255);
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_link     VARCHAR(500) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_code     VARCHAR(100) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
