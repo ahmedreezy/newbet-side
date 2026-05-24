@@ -106,6 +106,7 @@
               </button>
               <template v-else>
                 <span class="pick-vip-active-tag">👑 VIP</span>
+                <button class="pick-vip-plans-btn" @click="openMySubscriptions">View Plans</button>
                 <button class="pick-vip-add-btn" @click="openVipMenu" title="Get another package">＋</button>
               </template>
             </div>
@@ -197,7 +198,7 @@
               @click="goToAuthStep">
               {{ selectedGroup && selectedGroup.isClosed ? 'Package closed for today' : 'Continue →' }}
             </button>
-            <p class="mm-check-link" @click="vipStep = 'status'">Already paid? Check your status</p>
+            <p class="mm-check-link" @click="openMySubscriptions">View My Subscriptions</p>
           </template>
           <!-- ── STEP 3: Registration / Login ── -->
           <template v-else-if="vipStep === 3">
@@ -388,13 +389,13 @@
             <p class="mm-sub">Your payment request has been saved and is being processed.</p>
             <p class="mm-sub" style="font-size:13px;color:var(--text-muted)">
               Didn't receive a prompt on your phone? Tap <strong>Resend</strong> to try again,
-              or check your status below once you've approved it.
+              or view your subscriptions below once you've approved it.
             </p>
             <button class="mm-next-btn" :disabled="payLoading" @click="submitPayment">
               {{ payLoading ? 'Sending…' : '🔄 Resend Payment Request' }}
             </button>
-            <button class="mm-next-btn" style="margin-top:8px;opacity:0.75" @click="vipStep = 'status'; statusPhone = payPhone">
-              Check My Status →
+            <button class="mm-next-btn" style="margin-top:8px;opacity:0.75" @click="openMySubscriptions">
+              View My Subscriptions →
             </button>
             <p class="mm-check-link" style="margin-top:14px;cursor:pointer;color:var(--gold);font-size:13px;text-decoration:underline"
                @click="vipStep = 'submit-txn'; txnInput = ''; txnError = ''">
@@ -498,22 +499,15 @@
             </button>
           </template>
 
-          <!-- ── STATUS CHECK ── -->
+          <!-- ── VIEW MY SUBSCRIPTIONS ── -->
           <template v-else-if="vipStep === 'status'">
-            <div class="mm-icon">🔍</div>
-            <h3 class="mm-title">CHECK <span class="gold-text">STATUS</span></h3>
-            <form @submit.prevent="checkStatus" class="reg-form">
-              <div class="field">
-                <label>Your Phone Number</label>
-                <input v-model="statusPhone" type="tel" placeholder="07XXXXXXXX" required maxlength="10" pattern="[0-9]{10}" />
-              </div>
-              <p v-if="statusError" class="reg-error">{{ statusError }}</p>
-              <button type="submit" class="mm-next-btn" :disabled="statusLoading">
-                {{ statusLoading ? 'Checking…' : '🔍 Check Status' }}
-              </button>
-            </form>
+            <div class="mm-icon">📋</div>
+            <h3 class="mm-title">MY <span class="gold-text">SUBSCRIPTIONS</span></h3>
+            <p class="mm-sub">View your active plans and current bet slips.</p>
+            <p v-if="statusError" class="reg-error">{{ statusError }}</p>
+            <div v-if="statusLoading" class="pkg-loading">Loading your subscriptions…</div>
 
-            <div v-if="activeSubs.length" class="betslip-box">
+            <div v-else-if="activeSubs.length" class="betslip-box">
               <div v-for="sub in activeSubs" :key="sub.id" class="status-sub-card">
                 <div class="betslip-plan-title">{{ sub.planName || planDuration(sub.planType) }} Package</div>
                 <div v-if="isBetslipUpdated(sub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
@@ -563,7 +557,7 @@
 
 <script>
 import axios from 'axios'
-import { getUser, isLoggedIn } from '../utils/userAuth'
+import { getUser, isLoggedIn, saveUser } from '../utils/userAuth'
 
 const STATIC_PICKS = [
   {
@@ -661,8 +655,7 @@ export default {
       // Deadline-closed state
       deadlineMessage:      '',
       deadlineAlternatives: [],
-      // Status check
-      statusPhone: '',
+      // My subscriptions
       statusError: '',
       statusLoading: false,
       statusChecked: false,
@@ -710,16 +703,8 @@ export default {
     document.addEventListener('visibilitychange', this._onVisible)
     this._onLogout  = () => this.handleForcedLogout()
     this._onKeyDown = (e) => { if (e.key === 'Escape' && this.showVipMenu) this.closeVip() }
-    // "View My Subscriptions" button in UserProfile dispatches this to open status view
-    this._openStatus = () => {
-      if (isLoggedIn()) {
-        const stored = getUser()
-        if (stored) { this.regUser = stored; this.statusPhone = stored.phone || '' }
-      }
-      this.showVipMenu = true
-      this.vipStep     = 'status'
-      this.fetchUserActiveSub()
-    }
+    // "View My Subscriptions" buttons dispatch this to open the account-scoped view.
+    this._openStatus = () => this.openMySubscriptions()
     window.addEventListener('user-logged-out', this._onLogout)
     document.addEventListener('keydown', this._onKeyDown)
     document.addEventListener('open-vip-status', this._openStatus)
@@ -861,7 +846,6 @@ export default {
         const stored = getUser()
         if (stored) {
           this.regUser = stored
-          this.statusPhone = stored.phone || ''
         }
       }
       this.selectedGroup = null
@@ -890,6 +874,26 @@ export default {
       this.txnError         = ''
       this.vipStep          = 1
       this.fetchGroups()
+    },
+    async openMySubscriptions() {
+      this.showVipMenu = true
+      this.vipStep = 'status'
+      this.statusError = ''
+      this.statusChecked = false
+      this.activeSub = null
+      this.activeSubs = []
+      this.pendingStatusMsg = ''
+
+      const stored = isLoggedIn() ? getUser() : null
+      if (!stored || !stored.id) {
+        this.regUser = null
+        this.statusError = 'Please log in to view your subscriptions.'
+        this.statusChecked = true
+        return
+      }
+
+      this.regUser = stored
+      await this.checkStatus()
     },
     /** User manually submits Airtel Money transaction ID to verify a pending/failed payment */
     async submitTransactionId() {
@@ -989,7 +993,9 @@ export default {
       this.regError = ''
       try {
         const { data } = await axios.post('/api/users', this.regForm)
-        this.regUser = data
+        const { token, ...userInfo } = data
+        this.regUser = userInfo
+        if (token) saveUser(userInfo, token)
         this.toPaymentPromptStep()
       } catch (err) {
         if (err.response && err.response.status === 409) {
@@ -1010,7 +1016,10 @@ export default {
           phone: this.loginForm.phone,
           password: this.loginForm.password
         })
-        this.regUser = data.user || data
+        const userPayload = data.user || data
+        const { token, ...userInfo } = userPayload
+        this.regUser = userInfo
+        if (token) saveUser(userInfo, token)
         this.toPaymentPromptStep()
       } catch (err) {
         this.regError = this.getApiErrorMessage(err, 'Login failed. Please check your phone and password.')
@@ -1101,24 +1110,12 @@ export default {
       this.pendingStatusMsg = ''
       try {
         const loggedInUser = isLoggedIn() ? (this.regUser || getUser()) : null
-        if (loggedInUser && loggedInUser.id) {
-          const { data: subs } = await axios.get('/api/subscriptions/user/' + loggedInUser.id)
-          const allActive = subs.filter(s => s.status === 'active').map(this.normalizeSub)
-          if (allActive.length) {
-            this.activeSub  = allActive[0]
-            this.activeSubs = allActive
-          } else {
-            const pending = subs.find(s => s.status === 'pending')
-            this.pendingStatusMsg = pending
-              ? '⏳ Payment pending — awaiting confirmation. Check back soon.'
-              : 'No active subscription found for this account.'
-          }
+        if (!loggedInUser || !loggedInUser.id) {
+          this.statusError = 'Please log in to view your subscriptions.'
           this.statusChecked = true
           return
         }
-        // fallback: look up by phone
-        const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
-        const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
+        const { data: subs } = await axios.get('/api/subscriptions/user/' + loggedInUser.id)
         const allActive = subs.filter(s => s.status === 'active').map(this.normalizeSub)
         if (allActive.length) {
           this.activeSub  = allActive[0]
@@ -1127,11 +1124,13 @@ export default {
           const pending = subs.find(s => s.status === 'pending')
           this.pendingStatusMsg = pending
             ? '⏳ Payment pending — awaiting confirmation. Check back soon.'
-            : 'No active subscription found for this number.'
+            : 'No active subscription found for this account.'
         }
         this.statusChecked = true
-      } catch {
-        this.statusError = 'Could not find an account for this phone number.'
+      } catch (err) {
+        this.statusError = err.response?.status === 401
+          ? 'Please log in again to view your subscriptions.'
+          : 'Could not load your subscriptions. Please try again.'
         this.statusChecked = true
       } finally {
         this.statusLoading = false
@@ -1382,6 +1381,23 @@ export default {
   font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
+}
+.pick-vip-plans-btn {
+  background: rgba(46,184,46,0.12);
+  border: 1px solid rgba(46,184,46,0.35);
+  border-radius: 20px;
+  color: #66bb6a;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: 4px;
+  transition: background 0.18s, color 0.18s;
+}
+.pick-vip-plans-btn:hover {
+  background: rgba(46,184,46,0.2);
+  color: #8ee08e;
 }
 /* Add-another-package ＋ button beside VIP tag */
 .pick-vip-add-btn {

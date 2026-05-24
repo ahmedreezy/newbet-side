@@ -123,10 +123,13 @@ router.get('/', auth, async (req, res) => {
   }
 })
 
-// GET subscriptions for a specific user (public)
-router.get('/user/:userId', async (req, res) => {
+// GET subscriptions for the signed-in user. Admin tokens may inspect any user.
+router.get('/user/:userId', auth, async (req, res) => {
   const userId = parseInt(req.params.userId, 10)
   if (isNaN(userId)) return res.status(400).json({ error: 'Invalid userId' })
+  if (req.admin?.role === 'user' && Number(req.admin.id) !== userId) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
   try {
     await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
     const { rows } = await pool.query(SUB_SELECT + ' WHERE s.user_id = $1 ORDER BY s.created_at DESC', [userId])
