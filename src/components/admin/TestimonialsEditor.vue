@@ -88,7 +88,9 @@
 
 <script>
 import adminApi from '../../utils/adminApi'
-const API = process.env.VUE_APP_API_URL || ''
+import { getApiBaseUrl } from '../../utils/apiBase'
+
+const API = getApiBaseUrl()
 
 export default {
   name: 'TestimonialsEditor',
