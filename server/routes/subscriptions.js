@@ -193,10 +193,8 @@ router.post('/', async (req, res) => {
 
     const reference = `ALX-${parsedGroupId}-${parsedUserId}-${Date.now()}`
 
-    // Initiate STK push
-    const pushResult = await initiateSTKPush({ phone, amount: effectiveAmount, reference, paymentMethod })
-
-    // Insert subscription
+    // Insert pending records before the STK push. Jpesa can call back immediately,
+    // and the callback needs a saved reference/transaction id to match.
     const { rows: [sub] } = await pool.query(`
       INSERT INTO subscriptions
         (user_id, group_id, plan_type, odds_type, payment_method, phone, amount, status, payment_reference)
@@ -207,10 +205,21 @@ router.post('/', async (req, res) => {
     // Insert payment record
     const { rows: [payment] } = await pool.query(`
       INSERT INTO payments
-        (subscription_id, user_id, amount, plan_type, payment_method, phone, status, payment_reference)
-      VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+        (subscription_id, user_id, amount, plan_type, payment_method, phone, status, payment_reference, transaction_id)
+      VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
       RETURNING *
-    `, [sub.id, parsedUserId, effectiveAmount, group.plan_type, paymentMethod, phone, reference])
+    `, [sub.id, parsedUserId, effectiveAmount, group.plan_type, paymentMethod, phone, reference, reference])
+
+    const pushResult = await initiateSTKPush({ phone, amount: effectiveAmount, reference, paymentMethod })
+
+    const providerTxnId = pushResult?.raw?.tid || pushResult?.raw?.transaction_id || pushResult?.raw?.txn_id || ''
+    if (providerTxnId) {
+      payment.transaction_id = providerTxnId
+      await pool.query(
+        `UPDATE payments SET transaction_id = $1 WHERE id = $2`,
+        [providerTxnId, payment.id]
+      )
+    }
 
     res.status(201).json({ subscription: rowToSub(sub, false), payment, paymentReference: reference, pushResult })
   } catch (err) {
