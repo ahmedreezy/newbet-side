@@ -28,6 +28,132 @@ function rowToPayment(row) {
   }
 }
 
+function normalizeProviderStatus(status) {
+  const value = String(status || '').trim().toLowerCase()
+  if (['approved', 'approve', 'success', 'successful', 'completed', 'ok', 'paid'].includes(value)) return 'approved'
+  if (['failed', 'failure', 'declined', 'rejected', 'cancelled', 'canceled', 'error'].includes(value)) return 'failed'
+  if (['closed', 'close'].includes(value)) return 'closed'
+  return 'unknown'
+}
+
+async function findPendingSubscription({ reference, txnId }) {
+  const ref = String(reference || '').trim()
+  const tid = String(txnId || '').trim()
+
+  if (ref) {
+    const { rows } = await pool.query(
+      `SELECT s.*, g.plan_type AS g_plan_type, g.betslip_link AS g_betslip_link, g.betslip_code AS g_betslip_code
+       FROM subscriptions s
+       LEFT JOIN groups g ON g.id = s.group_id
+       WHERE s.payment_reference = $1 AND s.status = 'pending'
+       LIMIT 1`,
+      [ref]
+    )
+    if (rows.length > 0) return rows[0]
+  }
+
+  if (tid) {
+    const { rows } = await pool.query(
+      `SELECT s.*, g.plan_type AS g_plan_type, g.betslip_link AS g_betslip_link, g.betslip_code AS g_betslip_code
+       FROM subscriptions s
+       LEFT JOIN groups g ON g.id = s.group_id
+       LEFT JOIN payments p ON p.subscription_id = s.id
+       WHERE s.status = 'pending'
+         AND (p.transaction_id = $1 OR s.payment_reference = $1 OR p.payment_reference = $1)
+       LIMIT 1`,
+      [tid]
+    )
+    if (rows.length > 0) return rows[0]
+  }
+
+  return null
+}
+
+async function applyPaymentOutcome(sub, status, transactionId, source) {
+  if (status === 'approved') {
+    const intervalMap = { daily: '24 hours', weekly: '7 days', monthly: '30 days', special: '24 hours' }
+    const interval    = intervalMap[sub.plan_type] || '24 hours'
+    const betslipLink = sub.g_betslip_link || sub.betslip_link || ''
+    const betslipCode = sub.g_betslip_code || sub.betslip_code || ''
+
+    await pool.query(
+      `UPDATE subscriptions SET
+         status       = 'active',
+         betslip_link = $1,
+         betslip_code = $2,
+         started_at   = NOW(),
+         expires_at   = NOW() + $3::interval
+       WHERE id = $4`,
+      [betslipLink, betslipCode, interval, sub.id]
+    )
+    await pool.query(
+      `UPDATE payments SET status = 'confirmed', transaction_id = $1
+       WHERE subscription_id = $2 AND status = 'pending'`,
+      [transactionId || '', sub.id]
+    )
+    console.info(`[Webhook] Subscription ${sub.id} activated via ${source}. ref=${sub.payment_reference} txn=${transactionId || ''}`)
+    return
+  }
+
+  if (status === 'failed') {
+    await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE id = $1`, [sub.id])
+    await pool.query(
+      `UPDATE payments SET status = 'failed', transaction_id = COALESCE(NULLIF($1, ''), transaction_id)
+       WHERE subscription_id = $2`,
+      [transactionId || '', sub.id]
+    )
+    console.info(`[Webhook] Payment failed via ${source} for subscription ${sub.id}. ref=${sub.payment_reference}`)
+  }
+}
+
+async function handleCallbackOutcome({ reference, status, transactionId, source }, res) {
+  const normalizedStatus = normalizeProviderStatus(status)
+  const txnId = String(transactionId || '').trim()
+
+  if (normalizedStatus === 'closed') {
+    console.info(`[Webhook] Closed status ignored. source=${source} ref=${reference || ''} txn=${txnId}`)
+    return res.status(200).send('OK')
+  }
+
+  if (!reference && !txnId) return res.status(200).send('OK')
+
+  const sub = await findPendingSubscription({ reference, txnId })
+  if (!sub) return res.status(200).send('OK')
+
+  if (['approved', 'failed'].includes(normalizedStatus)) {
+    await applyPaymentOutcome(sub, normalizedStatus, txnId, source)
+  }
+
+  return res.status(200).send('OK')
+}
+
+// GET mobile money webhook callback (no auth).
+// Jpesa calls this URL with ?tid=<transaction id>&status=approved|failed|closed.
+router.get('/webhook', async (req, res) => {
+  try {
+    const tid = req.query.tid || ''
+    const status = req.query.status || ''
+
+    if (!tid && !status) {
+      return res.status(200).json({
+        ok: true,
+        endpoint: '/api/payments/webhook',
+        message: 'Payment callback endpoint is reachable'
+      })
+    }
+
+    return handleCallbackOutcome({
+      reference: req.query.tx || req.query.reference || '',
+      status,
+      transactionId: tid,
+      source: 'jpesa-get'
+    }, res)
+  } catch (err) {
+    console.error('[Webhook] GET Error:', err)
+    return res.status(200).send('OK')
+  }
+})
+
 // GET all payments with payer info and proof (admin only)
 router.get('/', auth, async (req, res) => {
   try {

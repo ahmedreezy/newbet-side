@@ -56,27 +56,6 @@
         <div class="today-date-badge">{{ todayFormatted }}</div>
       </div>
 
-      <!-- VIP betslip box shown when user has an active subscription -->
-      <div v-if="userActiveSubs.length" class="vip-betslip-banner">
-        <div v-for="sub in userActiveSubs" :key="sub.id" class="vip-sub-card">
-          <div class="vip-betslip-header">✅ VIP ACTIVE — Expires {{ formatExpiry(sub.expiresAt) }}</div>
-          <div v-if="sub.betslipLink" class="betslip-section">
-            <div class="betslip-label">🔗 Betslip Link</div>
-            <a :href="sub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ sub.betslipLink }}</a>
-          </div>
-          <div v-if="sub.betslipCode" class="betslip-section">
-            <div class="betslip-label">🎫 Betslip Code</div>
-            <div class="betslip-code-row">
-              <code class="betslip-code">{{ sub.betslipCode }}</code>
-              <button class="copy-btn" @click="copyCode(sub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
-            </div>
-          </div>
-          <div v-if="!sub.betslipLink && !sub.betslipCode" class="betslip-pending-note">
-            ⏳ Betslip will appear here once admin activates your subscription.
-          </div>
-        </div>
-      </div>
-
       <div class="picks-grid">
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
           <!-- Full-width image -->
@@ -125,7 +104,10 @@
               <button v-if="!userActiveSub" class="pick-vip-btn" @click="openVipMenu">
                 👑 Join VIP
               </button>
-              <span v-else class="pick-vip-active-tag">👑 VIP</span>
+              <template v-else>
+                <span class="pick-vip-active-tag">👑 VIP</span>
+                <button class="pick-vip-add-btn" @click="openVipMenu" title="Get another package">＋</button>
+              </template>
             </div>
           </div>
         </div>
@@ -395,7 +377,8 @@
             <h3 class="mm-title">WAITING FOR <span class="gold-text">PAYMENT</span></h3>
             <p class="mm-sub">We sent a payment request to <strong>{{ payPhone }}</strong>.<br/>Please approve it on your phone.</p>
             <div class="processing-spinner" aria-label="Processing"></div>
-            <p class="mm-note" style="margin-top:16px">Do not close this window. This may take up to a minute.</p>
+            <div class="poll-countdown">{{ pollCountdown }}</div>
+            <p class="mm-note" style="margin-top:8px">Do not close this window. Checking for confirmation…</p>
           </template>
 
           <!-- ── PAYMENT PENDING (poll timed out) ── -->
@@ -404,13 +387,55 @@
             <h3 class="mm-title">PAYMENT <span class="gold-text">PENDING</span></h3>
             <p class="mm-sub">Your payment request has been saved and is being processed.</p>
             <p class="mm-sub" style="font-size:13px;color:var(--text-muted)">
-              Approval can take a few minutes. You'll receive a prompt on your phone.
-              Once you confirm it, your subscription activates automatically.
+              Didn't receive a prompt on your phone? Tap <strong>Resend</strong> to try again,
+              or check your status below once you've approved it.
             </p>
-            <button class="mm-next-btn" @click="vipStep = 'status'; statusPhone = payPhone">
+            <button class="mm-next-btn" :disabled="payLoading" @click="submitPayment">
+              {{ payLoading ? 'Sending…' : '🔄 Resend Payment Request' }}
+            </button>
+            <button class="mm-next-btn" style="margin-top:8px;opacity:0.75" @click="vipStep = 'status'; statusPhone = payPhone">
               Check My Status →
             </button>
+            <p class="mm-check-link" style="margin-top:14px;cursor:pointer;color:var(--gold);font-size:13px;text-decoration:underline"
+               @click="vipStep = 'submit-txn'; txnInput = ''; txnError = ''">
+              Already paid? Enter your Airtel transaction ID →
+            </p>
             <p class="mm-back" @click="closeVip">Close</p>
+          </template>
+
+          <!-- ── SUBMIT TRANSACTION ID (fallback when STK push / webhook didn't auto-confirm) ── -->
+          <template v-else-if="vipStep === 'submit-txn'">
+            <div class="mm-icon">🧾</div>
+            <h3 class="mm-title">VERIFY <span class="gold-text">PAYMENT</span></h3>
+            <p class="mm-sub">
+              Enter the Airtel Money transaction ID from the SMS you received after paying.
+              We'll verify it with the network and activate your subscription instantly.
+            </p>
+            <div class="reg-form" style="text-align:left">
+              <div class="field">
+                <label>Transaction ID</label>
+                <input
+                  v-model="txnInput"
+                  type="text"
+                  placeholder="e.g. CI250524.1234.A12345"
+                  maxlength="80"
+                  autocomplete="off"
+                  @keydown.enter.prevent="submitTransactionId"
+                />
+                <p class="security-q-hint" style="margin-top:4px;font-size:12px">
+                  Check your SMS for a message like "Airtel Money Transaction ID: CI2505…"
+                </p>
+              </div>
+            </div>
+            <p v-if="txnError" class="reg-error">{{ txnError }}</p>
+            <button
+              class="mm-next-btn"
+              :disabled="!txnInput.trim() || txnLoading"
+              @click="submitTransactionId"
+            >
+              {{ txnLoading ? 'Verifying…' : '✅ Verify &amp; Activate' }}
+            </button>
+            <p class="mm-back" @click="vipStep = 'payment-pending'">← Back</p>
           </template>
 
           <!-- ── DEADLINE CLOSED ── -->
@@ -447,6 +472,8 @@
             <h3 class="mm-title">PAYMENT <span class="gold-text">CONFIRMED</span></h3>
             <p class="mm-sub">Your VIP subscription is now active!</p>
             <div v-if="activeSub" class="betslip-box">
+              <div class="betslip-plan-title">{{ activeSub.planName || planDuration(activeSub.planType) }} Package</div>
+              <div v-if="isBetslipUpdated(activeSub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
               <div class="betslip-badge">✅ ACTIVE VIP</div>
               <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
               <div v-if="activeSub.betslipLink" class="betslip-section">
@@ -462,6 +489,13 @@
               </div>
             </div>
             <button class="mm-next-btn" @click="closeVip">Done</button>
+            <button
+              class="mm-next-btn"
+              style="margin-top:8px;background:rgba(255,215,0,0.10);color:var(--gold);border:1px solid rgba(255,215,0,0.3)"
+              @click="goToAnotherPackage"
+            >
+              👑 Get Another Package →
+            </button>
           </template>
 
           <!-- ── STATUS CHECK ── -->
@@ -481,6 +515,8 @@
 
             <div v-if="activeSubs.length" class="betslip-box">
               <div v-for="sub in activeSubs" :key="sub.id" class="status-sub-card">
+                <div class="betslip-plan-title">{{ sub.planName || planDuration(sub.planType) }} Package</div>
+                <div v-if="isBetslipUpdated(sub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
                 <div class="betslip-badge">✅ ACTIVE VIP</div>
                 <p class="betslip-exp">Expires: {{ formatExpiry(sub.expiresAt) }}</p>
 
@@ -617,6 +653,11 @@ export default {
       processingSubId: null,
       pollCount: 0,
       pollError: '',
+      pollSecondsLeft: 180,
+      // Transaction ID fallback flow
+      txnInput:   '',
+      txnLoading: false,
+      txnError:   '',
       // Deadline-closed state
       deadlineMessage:      '',
       deadlineAlternatives: [],
@@ -647,6 +688,11 @@ export default {
     userActiveSub() {
       return this.userActiveSubs[0] || null
     },
+    pollCountdown() {
+      const m = Math.floor(this.pollSecondsLeft / 60)
+      const s = this.pollSecondsLeft % 60
+      return m + ':' + String(s).padStart(2, '0')
+    },
     visibleGroups() {
       // Only show active packages; special packages also need a price set to be visible
       return this.groups.filter(g => {
@@ -664,17 +710,55 @@ export default {
     document.addEventListener('visibilitychange', this._onVisible)
     this._onLogout  = () => this.handleForcedLogout()
     this._onKeyDown = (e) => { if (e.key === 'Escape' && this.showVipMenu) this.closeVip() }
+    // "View My Subscriptions" button in UserProfile dispatches this to open status view
+    this._openStatus = () => {
+      if (isLoggedIn()) {
+        const stored = getUser()
+        if (stored) { this.regUser = stored; this.statusPhone = stored.phone || '' }
+      }
+      this.showVipMenu = true
+      this.vipStep     = 'status'
+      this.fetchUserActiveSub()
+    }
     window.addEventListener('user-logged-out', this._onLogout)
     document.addEventListener('keydown', this._onKeyDown)
+    document.addEventListener('open-vip-status', this._openStatus)
   },
   beforeUnmount() {
     clearInterval(this._pollInterval)
     clearInterval(this._payPollInterval)
+    clearInterval(this._pollCountdownInterval)
     document.removeEventListener('visibilitychange', this._onVisible)
     window.removeEventListener('user-logged-out', this._onLogout)
     document.removeEventListener('keydown', this._onKeyDown)
+    document.removeEventListener('open-vip-status', this._openStatus)
   },
   methods: {
+    normalizeSub(s) {
+      return {
+        ...s,
+        betslipLink: s.betslipLink ?? s.betslip_link ?? '',
+        betslipCode: s.betslipCode ?? s.betslip_code ?? '',
+        expiresAt:   s.expiresAt   ?? s.expires_at   ?? null,
+        startedAt:   s.startedAt   ?? s.started_at   ?? null,
+        updatedAt:   s.updatedAt   ?? s.updated_at   ?? null,
+        planName:    s.planName    ?? null,
+        planType:    s.planType    ?? s.plan_type     ?? '',
+        oddsType:    s.oddsType    ?? s.odds_type     ?? '',
+      }
+    },
+    /**
+     * Returns true when the subscription's betslip was refreshed by admin AFTER
+     * the subscription was originally activated (>2 min gap = deliberate update,
+     * not the initial activation write). Used to show "⚡ Betslip Updated!" badge
+     * on weekly/monthly packages where admin pushes a new betslip each day.
+     */
+    isBetslipUpdated(sub) {
+      if (!sub.updatedAt || !sub.startedAt) return false
+      const updated = new Date(sub.updatedAt)
+      const started = new Date(sub.startedAt)
+      return (updated - started) > 120_000 // >2 min after activation = admin refresh
+    },
     getApiErrorMessage(err, fallback) {
       const responseData = err?.response?.data
       if (!responseData) return fallback
@@ -712,6 +796,9 @@ export default {
     planDuration(planType) {
       return { daily: '24h access', weekly: '7-day access', monthly: '30-day access', special: '24h access' }[planType] || planType
     },
+    planTypeLabel(planType) {
+      return { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', special: 'Special' }[planType] || (planType ? planType.charAt(0).toUpperCase() + planType.slice(1) : 'VIP')
+    },
     effectiveGroupPrice(group) {
       return (group.isSpecial && group.specialPrice != null) ? group.specialPrice : group.price
     },
@@ -720,7 +807,7 @@ export default {
         const user = getUser()
         if (!user || !user.id) return
         const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
-        this.userActiveSubs = subs.filter(s => s.status === 'active')
+        this.userActiveSubs = subs.filter(s => s.status === 'active').map(this.normalizeSub)
       } catch { /* ignore */ }
     },
     async fetchTips() {
@@ -786,11 +873,57 @@ export default {
       this.fetchGroups()
     },
     closeVip() {
-      if (['payment-prompt', 'processing', 'payment-pending'].includes(this.vipStep)) {
+      if (['payment-prompt', 'processing', 'payment-pending', 'submit-txn'].includes(this.vipStep)) {
         if (!confirm('Payment is in progress. Are you sure you want to close?')) return
       }
       this.stopPolling()
       this.showVipMenu = false
+    },
+    /** Allow the user to subscribe to an additional package without closing the modal */
+    goToAnotherPackage() {
+      this.activeSub        = null
+      this.payError         = ''
+      this.selectedGroup    = null
+      this.selectedProvider = ''
+      this.payPhone         = ''
+      this.txnInput         = ''
+      this.txnError         = ''
+      this.vipStep          = 1
+      this.fetchGroups()
+    },
+    /** User manually submits Airtel Money transaction ID to verify a pending/failed payment */
+    async submitTransactionId() {
+      const txnId = (this.txnInput || '').trim()
+      if (!txnId) {
+        this.txnError = 'Please enter your transaction ID.'
+        return
+      }
+      if (!this.processingSubId) {
+        this.txnError = 'Session expired. Please restart the payment flow.'
+        return
+      }
+      this.txnLoading = true
+      this.txnError   = ''
+      try {
+        const { data } = await axios.post(
+          '/api/subscriptions/' + this.processingSubId + '/submit-transaction',
+          { transactionId: txnId }
+        )
+        if (data.verified) {
+          this.activeSub = data.subscription
+          await this.fetchUserActiveSub()
+          this.vipStep = 'success'
+        } else {
+          this.txnError = data.message || 'Transaction could not be verified.'
+        }
+      } catch (err) {
+        this.txnError =
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Verification failed. Please check your transaction ID and try again.'
+      } finally {
+        this.txnLoading = false
+      }
     },
     goToAuthStep() {
       if (!this.selectedGroup) return
@@ -902,7 +1035,14 @@ export default {
         this.vipStep = 'processing'
         this.startPolling()
       } catch (err) {
-        if (err.response?.status === 422 && err.response?.data?.alternatives) {
+        if (err.response?.status === 409 && err.response?.data?.existingSubscriptionId) {
+          // Duplicate-submit guard on backend: continue watching the already pending request.
+          this.processingSubId = err.response.data.existingSubscriptionId
+          this.pollCount = 0
+          this.pollError = ''
+          this.vipStep = 'processing'
+          this.startPolling()
+        } else if (err.response?.status === 422 && err.response?.data?.alternatives) {
           // Package closed for today — show alternatives
           this.deadlineMessage      = err.response.data.message
           this.deadlineAlternatives = err.response.data.alternatives
@@ -916,6 +1056,10 @@ export default {
       }
     },
     startPolling() {
+      this.pollSecondsLeft = 180
+      this._pollCountdownInterval = setInterval(() => {
+        if (this.pollSecondsLeft > 0) this.pollSecondsLeft--
+      }, 1000)
       this._payPollInterval = setInterval(async () => {
         this.pollCount++
         if (this.pollCount > 36) {  // 36 × 5s = 3 min
@@ -943,6 +1087,10 @@ export default {
         clearInterval(this._payPollInterval)
         this._payPollInterval = null
       }
+      if (this._pollCountdownInterval) {
+        clearInterval(this._pollCountdownInterval)
+        this._pollCountdownInterval = null
+      }
     },
     async checkStatus() {
       this.statusLoading = true
@@ -955,7 +1103,7 @@ export default {
         const loggedInUser = isLoggedIn() ? (this.regUser || getUser()) : null
         if (loggedInUser && loggedInUser.id) {
           const { data: subs } = await axios.get('/api/subscriptions/user/' + loggedInUser.id)
-          const allActive = subs.filter(s => s.status === 'active')
+          const allActive = subs.filter(s => s.status === 'active').map(this.normalizeSub)
           if (allActive.length) {
             this.activeSub  = allActive[0]
             this.activeSubs = allActive
@@ -971,7 +1119,7 @@ export default {
         // fallback: look up by phone
         const { data: user } = await axios.get('/api/users/by-phone/' + encodeURIComponent(this.statusPhone))
         const { data: subs } = await axios.get('/api/subscriptions/user/' + user.id)
-        const allActive = subs.filter(s => s.status === 'active')
+        const allActive = subs.filter(s => s.status === 'active').map(this.normalizeSub)
         if (allActive.length) {
           this.activeSub  = allActive[0]
           this.activeSubs = allActive
@@ -1235,6 +1383,26 @@ export default {
   font-weight: 800;
   white-space: nowrap;
 }
+/* Add-another-package ＋ button beside VIP tag */
+.pick-vip-add-btn {
+  background: rgba(255,215,0,0.12);
+  border: 1px solid rgba(255,215,0,0.3);
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  color: var(--gold);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.18s;
+}
+.pick-vip-add-btn:hover { background: rgba(255,215,0,0.25); }
 
 /* Revealed tip row (replaces lock row for active VIP) */
 .pick-revealed-row {
@@ -1257,6 +1425,14 @@ export default {
   border-radius: 14px;
   padding: 18px 22px;
   margin-bottom: 28px;
+}
+.vip-sub-plan-title {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--gold, #FFD700);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
 }
 .vip-betslip-header {
   font-size: 13px;
@@ -1453,11 +1629,16 @@ export default {
 
 /* Betslip access */
 .betslip-box { background: rgba(0,200,83,0.05); border: 1px solid rgba(0,200,83,0.2); border-radius: 14px; padding: 18px; margin-bottom: 16px; text-align: left; }
+/* Package name title inside betslip box */
+.betslip-plan-title { font-size: 15px; font-weight: 800; color: var(--gold); letter-spacing: 0.5px; margin-bottom: 6px; }
+/* "⚡ Betslip Updated!" badge for weekly/monthly refreshes */
+.betslip-updated-badge { display: inline-block; background: rgba(79,195,247,0.15); color: #4fc3f7; border: 1px solid rgba(79,195,247,0.3); border-radius: 20px; font-size: 11px; font-weight: 700; padding: 3px 12px; margin-bottom: 8px; }
 .betslip-badge { background: rgba(0,200,83,0.15); color: #00c853; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px; }
 .betslip-exp { font-size: 11px; color: var(--text-muted); margin-bottom: 14px; }
 .betslip-section { margin-bottom: 14px; }
 .betslip-label { font-size: 11px; font-weight: 700; color: #888; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
-.betslip-link { color: var(--gold); font-size: 12px; word-break: break-all; display: block; }
+.betslip-link { color: var(--gold); font-size: 12px; word-break: break-all; display: block; text-decoration: underline; }
+.betslip-link:hover { opacity: 0.8; }
 .betslip-code-row { display: flex; align-items: center; gap: 10px; }
 .betslip-code { background: var(--dark-3); padding: 8px 14px; border-radius: 8px; font-size: 16px; color: var(--gold); font-family: monospace; letter-spacing: 2px; flex: 1; }
 .copy-btn { background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3); color: var(--gold); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
@@ -1483,6 +1664,15 @@ export default {
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.poll-countdown {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 2px;
+  margin: 4px 0 12px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Goalpost accent */
 .goalpost-accent { display: flex; justify-content: center; opacity: 0.5; margin-top: 8px; }

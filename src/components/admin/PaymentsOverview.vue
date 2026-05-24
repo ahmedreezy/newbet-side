@@ -24,6 +24,12 @@
         </div>
         <button class="report-apply" @click="fetchReport" :disabled="reportLoading">Apply</button>
         <button class="report-reset" @click="resetReportRange" :disabled="reportLoading">Reset</button>
+        <div class="period-presets">
+          <button :class="['preset-btn', { 'preset-active': activePreset === 'today' }]" @click="setPreset('today')">Today</button>
+          <button :class="['preset-btn', { 'preset-active': activePreset === 'week' }]" @click="setPreset('week')">This Week</button>
+          <button :class="['preset-btn', { 'preset-active': activePreset === 'month' }]" @click="setPreset('month')">This Month</button>
+          <button :class="['preset-btn', { 'preset-active': activePreset === 'all' }]" @click="setPreset('all')">All Time</button>
+        </div>
       </div>
       <div v-if="reportError" class="error-msg" style="padding:8px 0">{{ reportError }}</div>
       <div v-else class="report-grid">
@@ -31,16 +37,10 @@
           <div class="report-label">Total Payments</div>
           <div class="report-value">{{ report.summary.totalPayments }}</div>
         </div>
-        <div class="report-card">
-          <div class="report-label">Total Amount</div>
-          <div class="report-value">{{ Number(report.summary.totalAmount || 0).toLocaleString() }} UGX</div>
-        </div>
-        <div class="report-card">
-          <div class="report-label">Confirmed</div>
-          <div class="report-value">
-            {{ reportStatusCount('confirmed') }}
-            <span class="report-sub">({{ Number(reportStatusAmount('confirmed')).toLocaleString() }} UGX)</span>
-          </div>
+        <div class="report-card report-card--green">
+          <div class="report-label">Money Received</div>
+          <div class="report-value">{{ Number(reportStatusAmount('confirmed') || 0).toLocaleString() }} UGX</div>
+          <div class="report-sub">{{ reportStatusCount('confirmed') }} confirmed</div>
         </div>
         <div class="report-card">
           <div class="report-label">Pending</div>
@@ -48,6 +48,10 @@
             {{ reportStatusCount('pending') }}
             <span class="report-sub">({{ Number(reportStatusAmount('pending')).toLocaleString() }} UGX)</span>
           </div>
+        </div>
+        <div class="report-card">
+          <div class="report-label">Total Volume</div>
+          <div class="report-value report-value--muted">{{ Number(report.summary.totalAmount || 0).toLocaleString() }} UGX</div>
         </div>
       </div>
     </div>
@@ -272,6 +276,7 @@ export default {
         from: '',
         to: '',
       },
+      activePreset: 'all',
       report: {
         summary: { totalPayments: 0, totalAmount: 0 },
         byStatus: [],
@@ -351,7 +356,27 @@ export default {
     async resetReportRange() {
       this.reportRange.from = ''
       this.reportRange.to = ''
+      this.activePreset = 'all'
       await this.fetchReport()
+    },
+    setPreset(period) {
+      this.activePreset = period
+      const now = new Date()
+      const pad = (n) => String(n).padStart(2, '0')
+      const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+      const today = fmt(now)
+      if (period === 'all') {
+        this.reportRange.from = ''; this.reportRange.to = ''
+      } else if (period === 'today') {
+        this.reportRange.from = today; this.reportRange.to = today
+      } else if (period === 'week') {
+        const d = new Date(now); d.setDate(d.getDate() - 6)
+        this.reportRange.from = fmt(d); this.reportRange.to = today
+      } else if (period === 'month') {
+        this.reportRange.from = fmt(new Date(now.getFullYear(), now.getMonth(), 1))
+        this.reportRange.to = today
+      }
+      this.fetchReport()
     },
     reportStatusCount(status) {
       const row = this.report.byStatus.find(x => x.status === status)
@@ -581,10 +606,18 @@ export default {
 .report-reset { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); color: #bbb; }
 .report-apply:disabled,
 .report-reset:disabled { opacity: 0.55; cursor: not-allowed; }
+.period-presets { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.preset-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); color: #bbb; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.18s, color 0.18s, background 0.18s; }
+.preset-btn:hover { border-color: rgba(255,215,0,0.3); color: #FFD700; }
+.preset-active { border-color: rgba(255,215,0,0.5) !important; background: rgba(255,215,0,0.1) !important; color: #FFD700 !important; }
 .report-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }
 .report-card { background: #161616; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
+.report-card--green { border-color: rgba(76,175,80,0.4); background: rgba(76,175,80,0.07); }
+.report-card--green .report-label { color: #81c784; }
+.report-card--green .report-value { color: #4caf50; }
 .report-label { font-size: 11px; color: #9a9a9a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
 .report-value { font-size: 18px; color: #fff; font-weight: 800; }
+.report-value--muted { font-size: 15px; color: #888; font-weight: 600; }
 .report-sub { display: inline-block; font-size: 11px; color: #9a9a9a; font-weight: 600; margin-left: 4px; }
 
 /* Tier tabs */
