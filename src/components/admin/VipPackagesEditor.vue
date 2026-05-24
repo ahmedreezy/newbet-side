@@ -213,11 +213,7 @@
 </template>
 
 <script>
-import axios from 'axios'
-
-function authHeaders() {
-  return { Authorization: 'Bearer ' + localStorage.getItem('adminToken') }
-}
+import adminApi from '@/utils/adminApi'
 
 export default {
   name: 'VipPackagesEditor',
@@ -252,7 +248,7 @@ export default {
       this.loading    = true
       this.fetchError = ''
       try {
-        const { data } = await axios.get('/api/groups/admin', { headers: authHeaders() })
+        const { data } = await adminApi.get('/api/groups/admin')
         this.packages = data.map(g => {
           const norm = {
             ...g,
@@ -314,7 +310,7 @@ export default {
             : null,
           subscription_deadline: pkg._deadline || null
         }
-        const { data } = await axios.patch('/api/groups/' + pkg.id, payload, { headers: authHeaders() })
+        const { data } = await adminApi.patch('/api/groups/' + pkg.id, payload)
         // Sync back from camelCase response (GroupController.formatGroup returns camelCase)
         pkg.price        = data.price
         pkg.specialPrice = data.specialPrice
@@ -339,7 +335,7 @@ export default {
     async deletePackage(pkg) {
       if (!confirm(`Delete "${pkg.name}"? This cannot be undone.`)) return
       try {
-        await axios.delete('/api/groups/' + pkg.id, { headers: authHeaders() })
+        await adminApi.delete('/api/groups/' + pkg.id)
         this.packages = this.packages.filter(p => p.id !== pkg.id)
       } catch (err) {
         this.saveError = err.response?.data?.error || 'Delete failed'
@@ -358,7 +354,7 @@ export default {
           price:      Number(this.newPkg.price),
           is_special: this.newPkg.isSpecial || false
         }
-        const { data } = await axios.post('/api/groups', body, { headers: authHeaders() })
+        const { data } = await adminApi.post('/api/groups', body)
         this.packages.push({
           ...data,
           _price:        data.price,

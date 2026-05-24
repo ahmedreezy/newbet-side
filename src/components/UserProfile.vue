@@ -28,6 +28,7 @@
             <span v-else class="up-status-none">No active subscription</span>
           </div>
           <div class="up-dd-divider"></div>
+          <button v-if="activeSub" class="up-view-subs-btn" @click="viewSubscriptions">📋 View My Subscriptions</button>
           <button class="up-logout-btn" @click="logout">Log out</button>
         </div>
       </transition>
@@ -272,6 +273,10 @@ export default {
       this.activeSub = null
       this.showDropdown = false
       this.$emit('logged-out')
+    },
+    viewSubscriptions() {
+      this.showDropdown = false
+      document.dispatchEvent(new CustomEvent('open-vip-status'))
     }
   }
 }
@@ -317,6 +322,8 @@ export default {
 .up-status-loading { color: var(--text-muted, #aaa); font-style: italic; }
 .up-logout-btn { width: 100%; background: rgba(255,80,80,0.12); border: 1px solid rgba(255,80,80,0.25); border-radius: 8px; color: #ff6b6b; font-size: 13px; font-weight: 700; padding: 8px; cursor: pointer; transition: background 0.2s; }
 .up-logout-btn:hover { background: rgba(255,80,80,0.22); }
+.up-view-subs-btn { width: 100%; background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.2); border-radius: 8px; color: #FFD700; font-size: 13px; font-weight: 700; padding: 8px 10px; cursor: pointer; text-align: left; transition: background 0.18s; margin-bottom: 8px; }
+.up-view-subs-btn:hover { background: rgba(255,215,0,0.16); }
 
 /* Modal overlay */
 .up-overlay {
