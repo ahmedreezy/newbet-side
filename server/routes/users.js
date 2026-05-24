@@ -190,11 +190,7 @@ router.get('/by-phone/:phone', async (req, res) => {
     )
     if (users.length === 0) return res.status(404).json({ error: 'User not found' })
     const user = users[0]
-    const { rows: subs } = await pool.query(
-      'SELECT * FROM subscriptions WHERE user_id = $1 ORDER BY created_at DESC',
-      [user.id]
-    )
-    res.json({ ...rowToUser(user), subscriptions: subs.map(rowToSub) })
+    res.json(rowToUser(user))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
