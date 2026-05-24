@@ -145,10 +145,14 @@ export default {
   mounted() {
     this.user = getUser()
     if (this.user) this.fetchStatus()
+    window.addEventListener('user-auth-changed', this.handleAuthChanged)
+    window.addEventListener('user-subscription-updated', this.handleSubscriptionUpdated)
     document.addEventListener('click', this.handleOutsideClick)
     document.addEventListener('keydown', this.handleKeyDown)
   },
   beforeUnmount() {
+    window.removeEventListener('user-auth-changed', this.handleAuthChanged)
+    window.removeEventListener('user-subscription-updated', this.handleSubscriptionUpdated)
     document.removeEventListener('click', this.handleOutsideClick)
     document.removeEventListener('keydown', this.handleKeyDown)
     document.body.style.overflow = ''
@@ -189,6 +193,17 @@ export default {
     },
     handleKeyDown(e) {
       if (e.key === 'Escape' && this.showAuthModal) this.closeAuth()
+    },
+    handleAuthChanged(event) {
+      const user = event.detail?.user || getUser()
+      this.user = user
+      this.activeSub = null
+      this.showDropdown = false
+      if (user) this.fetchStatus()
+    },
+    handleSubscriptionUpdated() {
+      this.user = getUser()
+      if (this.user) this.fetchStatus()
     },
     toggleDropdown() {
       this.showDropdown = !this.showDropdown
