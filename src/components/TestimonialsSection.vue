@@ -22,14 +22,13 @@
       >
         <div class="t-img-wrap">
           <img
-            :src="apiBase + t.imageUrl"
-            :alt="t.memberName || 'Testimonial'"
+            :src="imageSrc(t)"
+            :alt="t.caption || 'Testimonial'"
             class="t-img"
             loading="lazy"
           />
         </div>
-        <div v-if="t.memberName || t.caption" class="t-info">
-          <span v-if="t.memberName" class="t-name">{{ t.memberName }}</span>
+        <div v-if="t.caption" class="t-info">
           <span v-if="t.caption" class="t-caption">{{ t.caption }}</span>
         </div>
       </div>
@@ -66,6 +65,12 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    imageSrc(item) {
+      const url = item.imageUrl || item.image_url || ''
+      if (!url) return ''
+      if (/^(https?:|data:|blob:)/.test(url)) return url
+      return this.apiBase + url
     }
   }
 }
@@ -114,7 +119,6 @@ export default {
   flex-direction: column;
   gap: 4px;
 }
-.t-name   { font-size: 13px; font-weight: 700; color: var(--gold); }
 .t-caption{ font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
 .state-box, .empty-state {

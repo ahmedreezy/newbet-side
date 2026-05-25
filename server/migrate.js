@@ -87,6 +87,7 @@ async function migrate() {
         odds        VARCHAR(50)  NOT NULL,
         member_name VARCHAR(200) DEFAULT '',
         image_url   VARCHAR(500) DEFAULT '',
+        caption     TEXT         DEFAULT '',
         created_at  TIMESTAMPTZ  DEFAULT NOW()
       );
 
@@ -123,6 +124,7 @@ async function migrate() {
         time        VARCHAR(20)  DEFAULT '20:45',
         competition VARCHAR(200) DEFAULT 'Premier League',
         image_url   VARCHAR(500) DEFAULT '',
+        caption     TEXT         DEFAULT '',
         updated_at  TIMESTAMPTZ  DEFAULT NOW()
       );
     `)
@@ -140,6 +142,10 @@ async function migrate() {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at       TIMESTAMPTZ;
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS secret_code_hash VARCHAR(255) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS odds_type        VARCHAR(20)  DEFAULT '2';
+      ALTER TABLE recent_wins    ADD COLUMN IF NOT EXISTS caption        TEXT         DEFAULT '';
+      ALTER TABLE free_odd2      ADD COLUMN IF NOT EXISTS caption        TEXT         DEFAULT '';
+      ALTER TABLE football_tips  ADD COLUMN IF NOT EXISTS caption        TEXT         DEFAULT '';
+      ALTER TABLE football_tips  ADD COLUMN IF NOT EXISTS image_url      VARCHAR(500) DEFAULT '';
     `)
     console.log('✓ Core column migrations applied.')
 
