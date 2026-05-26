@@ -148,24 +148,6 @@ router.get('/:id/payment-status', async (req, res) => {
     await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
     const { rows } = await pool.query(SUB_SELECT + ' WHERE s.id = $1', [id])
     if (rows.length === 0) return res.status(404).json({ error: 'Subscription not found' })
-    if (rows[0].status === 'pending') {
-      const { rows: activeRows } = await pool.query(
-        SUB_SELECT + `
-          WHERE s.user_id = $1
-            AND s.group_id = $2
-            AND s.phone = $3
-            AND s.status = 'active'
-            AND (s.expires_at IS NULL OR s.expires_at > NOW())
-          ORDER BY s.started_at DESC
-          LIMIT 1
-        `,
-        [rows[0].user_id, rows[0].group_id, rows[0].phone]
-      )
-      if (activeRows.length > 0) {
-        const activeSub = rowToSub(activeRows[0], false)
-        return res.json({ status: 'active', subscription: activeSub })
-      }
-    }
     const sub = rowToSub(rows[0], false)
     res.json({ status: sub.status, subscription: sub })
   } catch (err) {

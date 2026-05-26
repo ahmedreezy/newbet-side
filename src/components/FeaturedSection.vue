@@ -684,10 +684,14 @@ export default {
     this._onVisible = () => { if (!document.hidden) this.fetchTips() }
     document.addEventListener('visibilitychange', this._onVisible)
     this._onLogout  = () => this.handleForcedLogout()
+    this._onLogin = (event) => this.handleUserLogin(event)
+    this._onSubscriptionUpdated = () => this.handleSubscriptionUpdated()
     this._onKeyDown = (e) => { if (e.key === 'Escape' && this.showVipMenu) this.closeVip() }
     // "View My Subscriptions" buttons dispatch this to open the account-scoped view.
     this._openStatus = () => this.openMySubscriptions()
     window.addEventListener('user-logged-out', this._onLogout)
+    window.addEventListener('user-logged-in', this._onLogin)
+    window.addEventListener('user-subscription-updated', this._onSubscriptionUpdated)
     document.addEventListener('keydown', this._onKeyDown)
     document.addEventListener('open-vip-status', this._openStatus)
   },
@@ -697,6 +701,8 @@ export default {
     clearInterval(this._pollCountdownInterval)
     document.removeEventListener('visibilitychange', this._onVisible)
     window.removeEventListener('user-logged-out', this._onLogout)
+    window.removeEventListener('user-logged-in', this._onLogin)
+    window.removeEventListener('user-subscription-updated', this._onSubscriptionUpdated)
     document.removeEventListener('keydown', this._onKeyDown)
     document.removeEventListener('open-vip-status', this._openStatus)
   },
@@ -818,9 +824,27 @@ export default {
     },
     handleForcedLogout() {
       this.regUser = null
+      this.userActiveSubs = []
+      this.activeSub = null
+      this.activeSubs = []
       if (['payment-prompt', 'processing', 'deadline-closed'].includes(this.vipStep)) {
         this.stopPolling()
         this.vipStep = 3
+      }
+    },
+    handleUserLogin(event) {
+      const user = event.detail?.user || getUser()
+      if (!user) return
+      this.regUser = user
+      this.fetchUserActiveSub()
+    },
+    handleSubscriptionUpdated() {
+      this.fetchUserActiveSub()
+      if (this.showVipMenu && this.vipStep === 'status') this.checkStatus()
+    },
+    notifySubscriptionUpdated(subscription = null) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('user-subscription-updated', { detail: { subscription } }))
       }
     },
     openVipMenu() {
@@ -898,6 +922,7 @@ export default {
         if (data.verified) {
           this.activeSub = data.subscription
           await this.fetchUserActiveSub()
+          this.notifySubscriptionUpdated(data.subscription)
           this.vipStep = 'success'
         } else {
           this.txnError = data.message || 'Transaction could not be verified.'
@@ -1064,6 +1089,7 @@ export default {
             this.stopPolling()
             this.activeSub = data.subscription
             await this.fetchUserActiveSub()
+            this.notifySubscriptionUpdated(data.subscription)
             this.vipStep = 'success'
           } else if (data.status === 'failed') {
             this.stopPolling()
