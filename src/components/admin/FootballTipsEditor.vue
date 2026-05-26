@@ -20,6 +20,13 @@
                 <label>Win Probability</label>
                 <input v-model.number="editForm.winProb" type="number" min="1" max="99" />
               </div>
+              <div class="prob-field">
+                <label>Linked VIP Package</label>
+                <select v-model="editForm.groupId" class="pkg-select">
+                  <option :value="null">— No linked package —</option>
+                  <option v-for="p in packages" :key="p.id" :value="p.id">{{ p.name }} ({{ p.planType }})</option>
+                </select>
+              </div>
             </MediaUploadCard>
             <div class="actions-row">
               <button class="save-btn" @click="saveEdit(tip.id)" :disabled="editSaving">
@@ -31,11 +38,13 @@
           </div>
 
           <template v-else>
-            <img v-if="imageSrc(tip)" :src="imageSrc(tip)" class="media-img" :alt="tip.caption || 'Almax pick'" />
+            <img v-if="imageSrc(tip)" :src="imageSrc(tip)" class="media-img" :alt="tip.caption || 'Almax pick'" style="cursor:zoom-in" @click="$lightbox.open(imageSrc(tip))" />
             <div v-else class="media-placeholder">Photo</div>
             <div class="media-body">
               <p>{{ tip.caption || 'No caption added' }}</p>
               <span>{{ normalizedWinProb(tip) }}% win probability</span>
+              <span v-if="tip.groupId" class="pkg-link-badge">👑 {{ linkedPkgName(tip) }}</span>
+              <span v-else class="pkg-link-badge pkg-link-none">No package linked</span>
             </div>
             <div class="card-actions">
               <button class="edit-btn" @click="startEdit(tip)">Edit</button>
@@ -52,6 +61,13 @@
             <div class="prob-field">
               <label>Win Probability</label>
               <input v-model.number="newTip.winProb" type="number" min="1" max="99" />
+            </div>
+            <div class="prob-field">
+              <label>Linked VIP Package</label>
+              <select v-model="newTip.groupId" class="pkg-select">
+                <option :value="null">— No linked package —</option>
+                <option v-for="p in packages" :key="p.id" :value="p.id">{{ p.name }} ({{ p.planType }})</option>
+              </select>
             </div>
           </MediaUploadCard>
 
@@ -81,23 +97,41 @@ export default {
   data() {
     return {
       tips: [],
+      packages: [],
       loading: true,
       saving: false,
       saved: false,
       saveError: '',
       imageFile: null,
-      newTip: { caption: '', winProb: 75 },
+      newTip: { caption: '', winProb: 75, groupId: null },
       editingId: null,
-      editForm: { caption: '', winProb: 75 },
+      editForm: { caption: '', winProb: 75, groupId: null },
       editFile: null,
       editSaving: false,
       editError: ''
     }
   },
   async mounted() {
-    await this.loadTips()
+    await Promise.all([this.loadTips(), this.loadPackages()])
   },
   methods: {
+    async loadPackages() {
+      try {
+        const { data } = await adminApi.get('/api/groups/admin')
+        this.packages = data.map(g => ({
+          id: g.id,
+          name: g.name,
+          planType: g.planType ?? g.plan_type ?? ''
+        }))
+      } catch {
+        // non-critical — dropdown stays empty
+      }
+    },
+    linkedPkgName(tip) {
+      if (!tip.groupId) return ''
+      const pkg = this.packages.find(p => p.id === tip.groupId)
+      return pkg ? pkg.name : 'Package #' + tip.groupId
+    },
     async loadTips() {
       this.loading = true
       try {
@@ -121,6 +155,8 @@ export default {
     appendTipFields(fd, source) {
       fd.append('caption', source.caption || '')
       fd.append('winProb', source.winProb || 75)
+      if (source.groupId != null) fd.append('group_id', source.groupId)
+      else fd.append('group_id', '')
     },
     async addTip() {
       this.saving = true
@@ -130,10 +166,10 @@ export default {
         const fd = new FormData()
         this.appendTipFields(fd, this.newTip)
         if (this.imageFile) fd.append('image', this.imageFile)
-        const { data } = await adminApi.post('/api/football-tips', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        const { data } = await adminApi.post('/api/football-tips', fd)
         this.tips.unshift(data)
         this.saved = true
-        this.newTip = { caption: '', winProb: 75 }
+        this.newTip = { caption: '', winProb: 75, groupId: null }
         this.imageFile = null
         setTimeout(() => { this.saved = false }, 2500)
       } catch {
@@ -144,7 +180,7 @@ export default {
     },
     startEdit(tip) {
       this.editingId = tip.id
-      this.editForm = { caption: tip.caption || '', winProb: this.normalizedWinProb(tip) }
+      this.editForm = { caption: tip.caption || '', winProb: this.normalizedWinProb(tip), groupId: tip.groupId ?? null }
       this.editFile = null
       this.editError = ''
     },
@@ -198,6 +234,10 @@ export default {
 .media-body span { color: #FFD700; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; }
 .card-actions { display: flex; gap: 8px; padding: 0 12px 12px; }
 .edit-panel { padding: 14px; }
+.pkg-select { width: 100%; background: #111; border: 1px solid rgba(255,215,0,0.2); border-radius: 8px; color: #fff; font-size: 13px; padding: 8px 10px; outline: none; cursor: pointer; margin-top: 4px; }
+.pkg-select option { background: #111; }
+.pkg-link-badge { display: block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #FFD700; letter-spacing: 0.3px; }
+.pkg-link-none { color: #555; font-weight: 400; }
 .add-section { margin-top: 28px; padding-top: 28px; border-top: 1px solid rgba(255,255,255,0.07); }
 .add-title { color: rgba(255,255,255,0.55); font-size: 11px; font-weight: 900; letter-spacing: 1.8px; text-transform: uppercase; margin: 0 0 18px; }
 .editor-form { display: flex; flex-direction: column; gap: 16px; }

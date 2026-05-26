@@ -227,7 +227,8 @@ export default {
 <style scoped>
 .dashboard {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(255,215,0,0.08), transparent 34%),
     linear-gradient(135deg, #070707 0%, #0e0e0e 46%, #111 100%);
@@ -244,6 +245,8 @@ export default {
   display: flex;
   flex-direction: column;
   padding: 30px 18px 24px;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar-logo {

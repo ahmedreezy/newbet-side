@@ -60,7 +60,7 @@
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
           <!-- Full-width image -->
           <div class="pick-img-bar">
-            <img v-if="pick.imageUrl || pick.image_url" :src="pick.imageUrl || pick.image_url" :alt="pick.caption || 'prediction'" class="pick-card-img" />
+            <img v-if="pick.imageUrl || pick.image_url" :src="pick.imageUrl || pick.image_url" :alt="pick.caption || 'prediction'" class="pick-card-img" style="cursor:zoom-in" @click="$lightbox.open(pick.imageUrl || pick.image_url)" />
             <div v-else class="pick-img-placeholder">
               <svg viewBox="0 0 80 54" width="56" height="38" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
                 <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
@@ -83,13 +83,13 @@
               </div>
             </div>
             <div class="pick-footer">
-              <button v-if="!userActiveSub" class="pick-vip-btn" @click="openVipMenu">
+              <button v-if="!pick.groupId || !subscribedGroupIds.has(Number(pick.groupId))" class="pick-vip-btn" @click="openVipMenu(pick.groupId || null)">
                 👑 Join VIP
               </button>
               <template v-else>
                 <span class="pick-vip-active-tag">👑 VIP</span>
                 <button class="pick-vip-plans-btn" @click="openMySubscriptions">View Plans</button>
-                <button class="pick-vip-add-btn" @click="openVipMenu" title="Get another package">＋</button>
+                <button class="pick-vip-add-btn" @click="openVipMenu(pick.groupId || null)" title="Get another package">＋</button>
               </template>
             </div>
           </div>
@@ -132,7 +132,8 @@
           <template v-if="vipStep === 1">
             <div class="mm-icon">👑</div>
             <h3 class="mm-title">JOIN <span class="gold-text">VIP TIPS</span></h3>
-            <p class="mm-sub">Select a package to unlock expert predictions</p>
+            <p v-if="linkedGroupId" class="mm-sub">You selected a pick — here is the matching VIP package:</p>
+            <p v-else class="mm-sub">Select a package to unlock expert predictions</p>
             <div v-if="groupsLoading" class="pkg-loading">Loading packages…</div>
             <div v-else-if="groupsError" class="pkg-error">{{ groupsError }}</div>
             <div v-else-if="visibleGroups.length === 0" class="pkg-empty">
@@ -466,20 +467,37 @@
             <div class="mm-icon">✅</div>
             <h3 class="mm-title">PAYMENT <span class="gold-text">CONFIRMED</span></h3>
             <p class="mm-sub">Your VIP subscription is now active!</p>
-            <div v-if="activeSub" class="betslip-box">
-              <div class="betslip-plan-title">{{ activeSub.planName || planDuration(activeSub.planType) }} Package</div>
-              <div v-if="isBetslipUpdated(activeSub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
-              <div class="betslip-badge">✅ ACTIVE VIP</div>
-              <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
-              <div v-if="activeSub.betslipLink" class="betslip-section">
-                <div class="betslip-label">🔗 Betslip Link</div>
-                <a :href="activeSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ activeSub.betslipLink }}</a>
+            <div v-if="activeSub" class="betslip-box" :class="{ 'betslip-box--reveal': activeSub.packagePhoto }">
+              <!-- ── Full-bleed hero photo with gradient overlay ── -->
+              <div v-if="activeSub.packagePhoto" class="success-photo-hero">
+                <img :src="resolvePhotoUrl(activeSub.packagePhoto)" alt="VIP Package" class="success-photo-img" style="cursor:zoom-in" @click="$lightbox.open(resolvePhotoUrl(activeSub.packagePhoto))" />
+                <div class="success-photo-overlay">
+                  <div class="success-photo-name">{{ activeSub.planName || planDuration(activeSub.planType) }} Package</div>
+                  <div class="success-photo-meta">
+                    <span class="betslip-badge" style="margin:0">✅ ACTIVE VIP</span>
+                    <span v-if="isBetslipUpdated(activeSub)" class="betslip-updated-badge" style="margin:0">⚡</span>
+                  </div>
+                </div>
               </div>
-              <div v-if="activeSub.betslipCode" class="betslip-section">
-                <div class="betslip-label">🎫 Betslip Code</div>
-                <div class="betslip-code-row">
-                  <code class="betslip-code">{{ activeSub.betslipCode }}</code>
-                  <button class="copy-btn" @click="copyCode(activeSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+              <!-- ── Betslip content ── -->
+              <div class="betslip-content">
+                <!-- Plan header (no-photo fallback) -->
+                <template v-if="!activeSub.packagePhoto">
+                  <div class="betslip-plan-title">{{ activeSub.planName || planDuration(activeSub.planType) }} Package</div>
+                  <div v-if="isBetslipUpdated(activeSub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
+                  <div class="betslip-badge">✅ ACTIVE VIP</div>
+                </template>
+                <p class="betslip-exp">Expires: {{ formatExpiry(activeSub.expiresAt) }}</p>
+                <div v-if="activeSub.betslipLink" class="betslip-section">
+                  <div class="betslip-label">🔗 Betslip Link</div>
+                  <a :href="activeSub.betslipLink" target="_blank" rel="noopener" class="betslip-link">{{ activeSub.betslipLink }}</a>
+                </div>
+                <div v-if="activeSub.betslipCode" class="betslip-section">
+                  <div class="betslip-label">🎫 Betslip Code</div>
+                  <div class="betslip-code-row">
+                    <code class="betslip-code">{{ activeSub.betslipCode }}</code>
+                    <button class="copy-btn" @click="copyCode(activeSub.betslipCode)">{{ copied ? '✓' : 'Copy' }}</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -503,7 +521,13 @@
 
             <div v-else-if="activeSubs.length" class="betslip-box">
               <div v-for="sub in activeSubs" :key="sub.id" class="status-sub-card">
-                <div class="betslip-plan-title">{{ sub.planName || planDuration(sub.planType) }} Package</div>
+                <div v-if="sub.packagePhoto" class="sub-card-photo-wrap">
+                  <img :src="resolvePhotoUrl(sub.packagePhoto)" alt="VIP Package" class="sub-card-photo" style="cursor:zoom-in" @click="$lightbox.open(resolvePhotoUrl(sub.packagePhoto))" />
+                  <div class="sub-card-photo-overlay">
+                    <div class="sub-card-photo-name">{{ sub.planName || planDuration(sub.planType) }} Package</div>
+                  </div>
+                </div>
+                <div v-if="!sub.packagePhoto" class="betslip-plan-title">{{ sub.planName || planDuration(sub.planType) }} Package</div>
                 <div v-if="isBetslipUpdated(sub)" class="betslip-updated-badge">⚡ Betslip Updated!</div>
                 <div class="betslip-badge">✅ ACTIVE VIP</div>
                 <p class="betslip-exp">Expires: {{ formatExpiry(sub.expiresAt) }}</p>
@@ -552,6 +576,9 @@
 <script>
 import axios from 'axios'
 import { getUser, isLoggedIn, saveUser } from '../utils/userAuth'
+import { getApiBaseUrl } from '../utils/apiBase'
+
+const API = getApiBaseUrl()
 
 const STATIC_PICKS = [
   {
@@ -586,14 +613,6 @@ export default {
   props: {
     openVip: { type: Boolean, default: false }
   },
-  watch: {
-    openVip(val) {
-      if (val) {
-        this.openVipMenu()
-        this.$emit('vipOpened')
-      }
-    }
-  },
   data() {
     const d = new Date()
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -610,6 +629,7 @@ export default {
       groupsLoading: false,
       groupsError: '',
       selectedGroup: null,
+      linkedGroupId: null,
       // Registration / Login
       isReturning: false,
       regForm: { username: '', phone: '', password: '', confirmPassword: '', securityAnswer: '' },
@@ -675,18 +695,47 @@ export default {
     userActiveSub() {
       return this.userActiveSubs[0] || null
     },
+    // Set of group IDs the user has an active subscription for
+    subscribedGroupIds() {
+      const ids = new Set()
+      this.userActiveSubs.forEach(s => {
+        if (s.groupId != null) ids.add(Number(s.groupId))
+      })
+      return ids
+    },
     pollCountdown() {
       const m = Math.floor(this.pollSecondsLeft / 60)
       const s = this.pollSecondsLeft % 60
       return m + ':' + String(s).padStart(2, '0')
     },
     visibleGroups() {
-      // Only show active packages; special packages also need a price set to be visible
-      return this.groups.filter(g => {
+      const active = this.groups.filter(g => {
         if (!g.isActive) return false
         if (g.isSpecial) return g.specialPrice != null
         return true
       })
+      // If user clicked from a specific pick, show only the linked package
+      if (this.linkedGroupId) {
+        const lid = Number(this.linkedGroupId)
+        const linked = active.find(g => Number(g.id) === lid)
+        return linked ? [linked] : active
+      }
+      return active
+    }
+  },
+  watch: {
+    // Auto-select when there is exactly one package (linked pick flow)
+    visibleGroups(groups) {
+      if (this.linkedGroupId && groups.length === 1 && !this.selectedGroup) {
+        this.selectedGroup = groups[0]
+      }
+    },
+    // Respond to external trigger (e.g. navbar "Join VIP" button)
+    openVip(val) {
+      if (val) {
+        this.openVipMenu()
+        this.$emit('vipOpened')
+      }
     }
   },
   async mounted() {
@@ -719,17 +768,24 @@ export default {
     document.removeEventListener('open-vip-status', this._openStatus)
   },
   methods: {
+    resolvePhotoUrl(url) {
+      if (!url) return ''
+      if (/^(https?:|data:|blob:)/.test(url)) return url
+      return API + url
+    },
     normalizeSub(s) {
       return {
         ...s,
-        betslipLink: s.betslipLink ?? s.betslip_link ?? '',
-        betslipCode: s.betslipCode ?? s.betslip_code ?? '',
-        expiresAt:   s.expiresAt   ?? s.expires_at   ?? null,
-        startedAt:   s.startedAt   ?? s.started_at   ?? null,
-        updatedAt:   s.updatedAt   ?? s.updated_at   ?? null,
-        planName:    s.planName    ?? null,
-        planType:    s.planType    ?? s.plan_type     ?? '',
-        oddsType:    s.oddsType    ?? s.odds_type     ?? '',
+        groupId:      s.groupId      ?? s.group_id      ?? s.group?.id    ?? null,
+        betslipLink:  s.betslipLink  ?? s.betslip_link  ?? '',
+        betslipCode:  s.betslipCode  ?? s.betslip_code  ?? '',
+        packagePhoto: s.packagePhoto ?? s.package_photo ?? '',
+        expiresAt:    s.expiresAt    ?? s.expires_at    ?? null,
+        startedAt:    s.startedAt    ?? s.started_at    ?? null,
+        updatedAt:    s.updatedAt    ?? s.updated_at    ?? null,
+        planName:     s.planName     ?? null,
+        planType:     s.planType     ?? s.plan_type     ?? '',
+        oddsType:     s.oddsType     ?? s.odds_type     ?? '',
       }
     },
     /**
@@ -798,7 +854,14 @@ export default {
     async fetchTips() {
       try {
         const { data } = await axios.get('/api/football-tips')
-        this.todayPicks = (data && data.length > 0) ? data : [...STATIC_PICKS]
+        if (data && data.length > 0) {
+          this.todayPicks = data.map(t => ({
+            ...t,
+            groupId: t.groupId ?? t.group_id ?? null,
+          }))
+        } else {
+          this.todayPicks = [...STATIC_PICKS]
+        }
       } catch { /* Server unavailable — static picks remain */ }
     },
     async fetchVipConfig() {
@@ -827,6 +890,7 @@ export default {
                               : g.special_price != null ? parseFloat(g.special_price) : null,
           subscriptionDeadline: g.subscriptionDeadline ?? g.subscription_deadline ?? null,
           isClosed:             g.isClosed     ?? false,
+          photoUrl:             g.photoUrl     ?? g.photo_url     ?? '',
         }))
       } catch {
         this.groupsError = 'Could not load packages. Please refresh and try again.'
@@ -859,18 +923,19 @@ export default {
         window.dispatchEvent(new CustomEvent('user-subscription-updated', { detail: { subscription } }))
       }
     },
-    openVipMenu() {
+    openVipMenu(groupId = null) {
       if (isLoggedIn()) {
         const stored = getUser()
         if (stored) {
           this.regUser = stored
         }
       }
-      this.selectedGroup = null
+      this.linkedGroupId    = groupId || null
+      this.selectedGroup    = null
       this.selectedProvider = ''
-      this.payPhone = ''
-      this.vipStep = 1
-      this.showVipMenu = true
+      this.payPhone         = ''
+      this.vipStep          = 1
+      this.showVipMenu      = true
       // Re-fetch packages each open so admin changes are immediately reflected
       this.fetchGroups()
     },
@@ -890,6 +955,7 @@ export default {
       this.payPhone         = ''
       this.txnInput         = ''
       this.txnError         = ''
+      this.linkedGroupId    = null
       this.vipStep          = 1
       this.fetchGroups()
     },
@@ -932,7 +998,7 @@ export default {
           { transactionId: txnId }
         )
         if (data.verified) {
-          this.activeSub = data.subscription
+          this.activeSub = { ...this.normalizeSub(data.subscription), packagePhoto: this.selectedGroup?.photoUrl || data.subscription.packagePhoto || '' }
           await this.fetchUserActiveSub()
           this.notifySubscriptionUpdated(data.subscription)
           this.vipStep = 'success'
@@ -1099,7 +1165,7 @@ export default {
           const { data } = await axios.get('/api/subscriptions/' + this.processingSubId + '/payment-status')
           if (data.status === 'active') {
             this.stopPolling()
-            this.activeSub = data.subscription
+            this.activeSub = { ...this.normalizeSub(data.subscription), packagePhoto: this.selectedGroup?.photoUrl || data.subscription.packagePhoto || '' }
             await this.fetchUserActiveSub()
             this.notifySubscriptionUpdated(data.subscription)
             this.vipStep = 'success'
@@ -1663,8 +1729,97 @@ export default {
 .pending-row strong { color: var(--white); }
 .status-pending { background: rgba(255,165,0,0.15); color: #FFA500; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 10px; }
 
-/* Betslip access */
-.betslip-box { background: rgba(0,200,83,0.05); border: 1px solid rgba(0,200,83,0.2); border-radius: 14px; padding: 18px; margin-bottom: 16px; text-align: left; }
+/* Betslip access card */
+.betslip-box {
+  background: rgba(0,200,83,0.05);
+  border: 1px solid rgba(0,200,83,0.2);
+  border-radius: 14px;
+  padding: 18px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.betslip-box.betslip-box--reveal {
+  padding: 0;
+  border-color: rgba(255,215,0,0.35);
+  animation: revealGlow 2.8s ease-in-out infinite;
+}
+@keyframes revealGlow {
+  0%, 100% { box-shadow: 0 0 16px rgba(255,215,0,0.07); border-color: rgba(255,215,0,0.30); }
+  50%       { box-shadow: 0 0 30px rgba(255,215,0,0.18); border-color: rgba(255,215,0,0.60); }
+}
+.betslip-content { padding: 14px 16px; }
+
+/* ── Success photo hero (full-bleed inside card) ── */
+.success-photo-hero {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+.success-photo-img {
+  width: 100%;
+  height: 215px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.45s ease;
+}
+.success-photo-hero:hover .success-photo-img { transform: scale(1.04); }
+.success-photo-overlay {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 54px 14px 14px;
+  background: linear-gradient(to top, rgba(0,0,0,0.90) 0%, rgba(0,0,0,0.12) 55%, transparent 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.success-photo-name {
+  font-size: 15px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.4px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+  flex: 1;
+  min-width: 0;
+}
+.success-photo-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* ── Subscription-list photo (My Subscriptions view) ── */
+.sub-card-photo-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,215,0,0.12);
+}
+.sub-card-photo {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+}
+.sub-card-photo-overlay {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 30px 10px 8px;
+  background: linear-gradient(to top, rgba(0,0,0,0.80) 0%, transparent 100%);
+}
+.sub-card-photo-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
 /* Package name title inside betslip box */
 .betslip-plan-title { font-size: 15px; font-weight: 800; color: var(--gold); letter-spacing: 0.5px; margin-bottom: 6px; }
 /* "⚡ Betslip Updated!" badge for weekly/monthly refreshes */
