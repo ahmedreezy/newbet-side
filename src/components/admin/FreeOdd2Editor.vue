@@ -27,7 +27,7 @@
     <div class="preview-wrap">
       <p class="preview-label">Live Preview</p>
       <div class="preview-card">
-        <img v-if="previewImage" :src="previewImage" class="preview-img" alt="Free daily tip preview" />
+        <img v-if="previewImage" :src="previewImage" class="preview-img" alt="Free daily tip preview" style="cursor:zoom-in" @click="$lightbox.open(previewImage)" />
         <div v-else class="preview-empty">Photo</div>
         <p>{{ form.caption || 'Caption will appear here' }}</p>
       </div>
@@ -107,12 +107,12 @@ export default {
 
 <style scoped>
 .editor { max-width: 760px; }
-.editor-desc { color: #888; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+.editor-desc { color: rgba(255,255,255,0.58); font-size: 14px; line-height: 1.7; margin-bottom: 24px; border-left: 3px solid #FFD700; padding: 12px 0 12px 16px; }
 .state-msg { background: #111; border-radius: 10px; color: #888; font-size: 14px; margin-bottom: 20px; padding: 14px 18px; }
 .state-msg.error { border: 1px solid rgba(255, 82, 82, 0.2); color: #ff8a65; }
 .editor-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; }
 .form-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 14px; }
-.save-btn { background: linear-gradient(135deg, #FFD700, #FFA500); border: none; border-radius: 9px; color: #000; cursor: pointer; font-size: 14px; font-weight: 900; padding: 12px 24px; }
+.save-btn { background: linear-gradient(135deg, #FFD700, #FFA500); border: none; border-radius: 9px; color: #000; cursor: pointer; font-size: 14px; font-weight: 900; min-height: 42px; padding: 11px 24px; }
 .save-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .saved-msg { color: #4caf50; font-size: 13px; font-weight: 700; }
 .error-msg { color: #ff5252; font-size: 13px; }

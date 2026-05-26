@@ -1,7 +1,7 @@
 <template>
   <div class="media-card" @dragover.prevent @drop.prevent="onDrop">
     <div class="media-preview" @click="openPicker">
-      <img v-if="preview" :src="preview" alt="Selected media preview" />
+      <img v-if="preview" :src="preview" alt="Selected media preview" style="cursor:zoom-in" @click="$lightbox.open(preview)" />
       <div v-else class="media-empty">
         <span class="media-empty-icon">Photo</span>
         <strong>Upload photo</strong>
