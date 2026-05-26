@@ -12,7 +12,7 @@
       <div class="winnings-grid">
         <div v-for="win in winnings" :key="win.id" class="win-card">
           <div class="win-media">
-            <img v-if="imageSrc(win)" :src="imageSrc(win)" :alt="captionFor(win) || 'Winning proof'" class="win-image" loading="lazy" />
+            <img v-if="imageSrc(win)" :src="imageSrc(win)" :alt="captionFor(win) || 'Winning proof'" class="win-image" loading="lazy" style="cursor:zoom-in" @click="$lightbox.open(imageSrc(win))" />
             <div v-else class="win-image-empty">Winning Proof</div>
             <div class="win-caption-bar">
               <p class="win-caption">{{ captionFor(win) }}</p>

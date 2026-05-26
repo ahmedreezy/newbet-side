@@ -27,7 +27,7 @@
     <div class="preview-wrap">
       <p class="preview-label">Live Preview</p>
       <div class="preview-card">
-        <img v-if="previewImage" :src="previewImage" class="preview-img" alt="Free daily tip preview" />
+        <img v-if="previewImage" :src="previewImage" class="preview-img" alt="Free daily tip preview" style="cursor:zoom-in" @click="$lightbox.open(previewImage)" />
         <div v-else class="preview-empty">Photo</div>
         <p>{{ form.caption || 'Caption will appear here' }}</p>
       </div>

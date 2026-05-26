@@ -20,6 +20,7 @@
               <th>Deadline</th>
               <th>Betslip Link</th>
               <th>Betslip Code</th>
+              <th>Photo</th>
               <th></th>
             </tr>
           </thead>
@@ -94,6 +95,16 @@
                 />
               </td>
 
+              <!-- Package photo -->
+              <td class="td-photo">
+                <div class="photo-upload-wrap">
+                  <img v-if="pkgPhotoSrc(pkg)" :src="pkgPhotoSrc(pkg)" class="pkg-photo-thumb" alt="package photo" style="cursor:zoom-in" @click="$lightbox.open(pkgPhotoSrc(pkg))" />
+                  <label class="photo-upload-btn" :for="'pkg-photo-' + pkg.id">+ Upload</label>
+                  <button v-if="pkgPhotoSrc(pkg)" type="button" class="photo-delete-btn" @click="deletePkgPhoto(pkg)">🗑 Delete</button>
+                  <input :id="'pkg-photo-' + pkg.id" type="file" accept="image/jpeg,image/png,image/webp" class="photo-file-input" @change="onPkgPhotoChange(pkg, $event)" />
+                </div>
+              </td>
+
               <!-- Actions -->
               <td class="td-actions">
                 <button
@@ -162,10 +173,28 @@
             <label>Betslip Code</label>
             <input v-model="specialPackage._betslipCode" type="text" placeholder="e.g. ABC123" @input="specialPackage._dirty = true" />
           </div>
+          <div class="special-field special-field-wide">
+            <label>Package Photo</label>
+            <div class="special-photo-block">
+              <img v-if="pkgPhotoSrc(specialPackage)" :src="pkgPhotoSrc(specialPackage)" class="special-photo-thumb" alt="package photo" style="cursor:zoom-in" @click="$lightbox.open(pkgPhotoSrc(specialPackage))" />
+              <div class="special-photo-btns">
+                <label class="photo-upload-btn" :for="'pkg-photo-' + specialPackage.id">+ Upload Photo</label>
+                <button v-if="pkgPhotoSrc(specialPackage)" type="button" class="photo-delete-btn" @click="deletePkgPhoto(specialPackage)">🗑 Delete Photo</button>
+              </div>
+              <input
+                :id="'pkg-photo-' + specialPackage.id"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                class="photo-file-input"
+                @change="onPkgPhotoChange(specialPackage, $event)"
+              />
+            </div>
+          </div>
           <div class="special-actions">
             <button class="btn-save btn-save-large" :disabled="!specialPackage._dirty || specialPackage._saving" @click="savePackage(specialPackage)">
               {{ specialPackage._saving ? 'Saving' : 'Save Special Odds' }}
             </button>
+            <button class="btn-del" @click="deletePackage(specialPackage)" title="Delete special odds package">Del</button>
             <span class="field-hint">Clear today's price to hide it from users.</span>
           </div>
         </div>
@@ -215,6 +244,9 @@
 
 <script>
 import adminApi from '@/utils/adminApi'
+import { getApiBaseUrl } from '@/utils/apiBase'
+
+const API = getApiBaseUrl()
 
 export default {
   name: 'VipPackagesEditor',
@@ -227,7 +259,8 @@ export default {
       addError:   '',
       addLoading: false,
       specialPackage: null,
-      newPkg: { name: '', oddsType: '2', planType: 'weekly', price: 5000 }
+      pkgPhotoFiles: {},
+      newPkg: { name: '', oddsType: '2', planType: 'weekly', price: 5000, photoFile: null }
     }
   },
   async mounted() {
@@ -269,6 +302,8 @@ export default {
             _isSpecial:    norm.isSpecial    || false,
             _isActive:     norm.isActive     !== false,
             _deadline:     norm.subscriptionDeadline || '',
+            _photoUrl:     norm.photoUrl     || '',
+            _clearPhoto:   false,
             _dirty:        false,
             _saving:       false
           }
@@ -282,28 +317,84 @@ export default {
       }
     },
 
+    pkgPhotoSrc(pkg) {
+      // Check if a new file was chosen (blob preview)
+      if (this.pkgPhotoFiles[pkg.id]) {
+        return URL.createObjectURL(this.pkgPhotoFiles[pkg.id])
+      }
+      const url = pkg._photoUrl || ''
+      if (!url) return ''
+      if (/^(https?:|data:|blob:)/.test(url)) return url
+      return API + url
+    },
+    onPkgPhotoChange(pkg, event) {
+      const file = event.target.files && event.target.files[0]
+      if (!file) return
+      this.$set ? this.$set(this.pkgPhotoFiles, pkg.id, file) : (this.pkgPhotoFiles = { ...this.pkgPhotoFiles, [pkg.id]: file })
+      pkg._clearPhoto = false
+      pkg._dirty = true
+    },
+    deletePkgPhoto(pkg) {
+      // Remove any staged file
+      const files = { ...this.pkgPhotoFiles }
+      delete files[pkg.id]
+      this.pkgPhotoFiles = files
+      // Clear stored URL and schedule deletion on next save
+      pkg._photoUrl   = ''
+      pkg._clearPhoto = true
+      pkg._dirty      = true
+    },
     async savePackage(pkg) {
       pkg._saving   = true
       this.saveError = ''
       try {
-        // Laravel update() validates snake_case keys — must match exactly
-        const payload = {
-          name:                  pkg._name || pkg.name,
-          price:                 Number(pkg._price),
-          betslip_link:          pkg._betslipLink  || '',
-          betslip_code:          pkg._betslipCode  || '',
-          is_active:             pkg._isActive,
-          is_special:            pkg._isSpecial,
-          special_price:         pkg._isSpecial && pkg._specialPrice !== ''
-            ? Number(pkg._specialPrice)
-            : null,
-          special_odds:          pkg._isSpecial && pkg._specialOdds !== ''
-            ? pkg._specialOdds
-            : null,
-          subscription_deadline: pkg._deadline || null
+        const hasPhoto = !!this.pkgPhotoFiles[pkg.id]
+        let data
+        if (hasPhoto) {
+          // Must use FormData when uploading a file
+          const fd = new FormData()
+          fd.append('name',                  pkg._name || pkg.name)
+          fd.append('price',                 Number(pkg._price))
+          fd.append('betslip_link',          pkg._betslipLink  || '')
+          fd.append('betslip_code',          pkg._betslipCode  || '')
+          fd.append('is_active',             pkg._isActive ? '1' : '0')
+          fd.append('is_special',            pkg._isSpecial ? '1' : '0')
+          if (pkg._isSpecial && pkg._specialPrice !== '') fd.append('special_price', Number(pkg._specialPrice))
+          if (pkg._isSpecial && pkg._specialOdds !== '')  fd.append('special_odds',  pkg._specialOdds)
+          if (pkg._deadline) fd.append('subscription_deadline', pkg._deadline)
+          fd.append('photo', this.pkgPhotoFiles[pkg.id])
+          // Laravel needs POST with _method=PATCH for form-data
+          fd.append('_method', 'PATCH')
+          // Do NOT set Content-Type manually — axios sets it automatically
+          // with the correct multipart boundary when given a FormData object
+          const res = await adminApi.post('/api/groups/' + pkg.id, fd)
+          data = res.data
+          // Clear staged file
+          const files = { ...this.pkgPhotoFiles }
+          delete files[pkg.id]
+          this.pkgPhotoFiles = files
+        } else {
+          // No photo — send plain JSON as before
+          const payload = {
+            name:                  pkg._name || pkg.name,
+            price:                 Number(pkg._price),
+            betslip_link:          pkg._betslipLink  || '',
+            betslip_code:          pkg._betslipCode  || '',
+            is_active:             pkg._isActive,
+            is_special:            pkg._isSpecial,
+            special_price:         pkg._isSpecial && pkg._specialPrice !== ''
+              ? Number(pkg._specialPrice)
+              : null,
+            special_odds:          pkg._isSpecial && pkg._specialOdds !== ''
+              ? pkg._specialOdds
+              : null,
+            subscription_deadline: pkg._deadline || null,
+            ...(pkg._clearPhoto ? { clear_photo: true } : {})
+          }
+          const res = await adminApi.patch('/api/groups/' + pkg.id, payload)
+          data = res.data
         }
-        const { data } = await adminApi.patch('/api/groups/' + pkg.id, payload)
-        // Sync back from camelCase response (GroupController.formatGroup returns camelCase)
+        // Sync back from camelCase response
         pkg.price        = data.price
         pkg.name         = data.name
         pkg.specialPrice = data.specialPrice
@@ -321,7 +412,9 @@ export default {
         pkg._isSpecial    = data.isSpecial    || false
         pkg._isActive     = data.isActive     !== false
         pkg._deadline     = data.subscriptionDeadline || ''
-        pkg._dirty  = false
+        pkg._photoUrl     = data.photoUrl     || ''
+        pkg._clearPhoto   = false
+        pkg._dirty        = false
       } catch (err) {
         this.saveError = err.response?.data?.error || err.response?.data?.message || 'Save failed'
       } finally {
@@ -330,10 +423,14 @@ export default {
     },
 
     async deletePackage(pkg) {
-      if (!confirm(`Delete "${pkg.name}"? This cannot be undone.`)) return
+      if (!confirm(`Delete "${pkg.name}"?\n\nThis will permanently remove this package and ALL associated subscriptions including any pending payments.\n\nThis cannot be undone.`)) return
       try {
         await adminApi.delete('/api/groups/' + pkg.id)
-        this.packages = this.packages.filter(p => p.id !== pkg.id)
+        if (pkg._isSpecial) {
+          this.specialPackage = null
+        } else {
+          this.packages = this.packages.filter(p => p.id !== pkg.id)
+        }
       } catch (err) {
         this.saveError = err.response?.data?.error || 'Delete failed'
       }
@@ -343,7 +440,6 @@ export default {
       this.addLoading = true
       this.addError   = ''
       try {
-        // Laravel store() validates snake_case keys — transform before posting
         const body = {
           name:       this.newPkg.name,
           odds_type:  this.newPkg.oddsType,
@@ -362,10 +458,11 @@ export default {
           _betslipCode:  data.betslipCode  || '',
           _isSpecial:    data.isSpecial    || false,
           _isActive:     data.isActive     !== false,
+          _photoUrl:     data.photoUrl     || '',
           _dirty:        false,
           _saving:       false
         })
-        this.newPkg = { name: '', oddsType: '2', planType: 'weekly', price: 5000 }
+        this.newPkg = { name: '', oddsType: '2', planType: 'weekly', price: 5000, photoFile: null }
       } catch (err) {
         this.addError = err.response?.data?.error || 'Failed to add package'
       } finally {
@@ -630,6 +727,20 @@ export default {
 
 .vpe-loading { color: rgba(255,255,255,0.5); padding: 32px 0; text-align: center; }
 .vpe-error { color: #ff5252; font-size: 13px; background: rgba(255,82,82,0.08); border-radius: 8px; padding: 10px 14px; }
+
+/* Package photo upload */
+.td-photo { width: 90px; }
+.photo-upload-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pkg-photo-thumb { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(255,215,0,0.2); display: block; }
+.photo-file-input { display: none; }
+.photo-upload-btn { display: inline-block; background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.25); border-radius: 6px; color: #FFD700; font-size: 11px; font-weight: 700; padding: 4px 8px; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+.photo-upload-btn:hover { background: rgba(255,215,0,0.2); }
+.photo-delete-btn { display: inline-block; background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.25); border-radius: 6px; color: #ff5252; font-size: 11px; font-weight: 700; padding: 4px 8px; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+.photo-delete-btn:hover { background: rgba(255,82,82,0.2); }
+/* Special odds photo block */
+.special-photo-block { display: flex; align-items: center; gap: 14px; padding: 10px 14px; background: rgba(0,0,0,0.2); border: 1px dashed rgba(255,215,0,0.18); border-radius: 10px; width: fit-content; }
+.special-photo-thumb { width: 80px; height: 58px; object-fit: cover; border-radius: 7px; border: 1px solid rgba(255,215,0,0.2); flex-shrink: 0; display: block; }
+.special-photo-btns { display: flex; flex-direction: column; gap: 7px; }
 
 @media (max-width: 1100px) {
   .special-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

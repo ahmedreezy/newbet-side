@@ -22,6 +22,8 @@
 
     <router-view />
 
+    <PhotoLightbox />
+
     <footer class="powered-footnote">
       Powered by Dape Technologies
       <span class="powered-phones">
@@ -62,9 +64,10 @@
 <script>
 import './assets/styles/global.css'
 import UserProfile from './components/UserProfile.vue'
+import PhotoLightbox from './components/PhotoLightbox.vue'
 export default {
   name: 'App',
-  components: { UserProfile },
+  components: { UserProfile, PhotoLightbox },
   data() {
     const saved = localStorage.getItem('theme') || 'dark'
     return {

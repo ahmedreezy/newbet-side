@@ -26,7 +26,7 @@
           </div>
 
           <template v-else>
-            <img v-if="imageSrc(win)" :src="imageSrc(win)" class="media-img" :alt="win.caption || 'Recent winning slip'" />
+            <img v-if="imageSrc(win)" :src="imageSrc(win)" class="media-img" :alt="win.caption || 'Recent winning slip'" style="cursor:zoom-in" @click="$lightbox.open(imageSrc(win))" />
             <div v-else class="media-placeholder">Photo</div>
             <div class="media-body">
               <p>{{ win.caption || legacyCaption(win) || 'No caption added' }}</p>
