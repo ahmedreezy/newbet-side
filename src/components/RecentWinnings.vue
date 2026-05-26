@@ -11,11 +11,13 @@
 
       <div class="winnings-grid">
         <div v-for="win in winnings" :key="win.id" class="win-card">
-          <div v-if="imageSrc(win)" class="win-image-wrap">
-            <img :src="imageSrc(win)" :alt="captionFor(win) || 'Winning proof'" class="win-image" loading="lazy" />
+          <div class="win-media">
+            <img v-if="imageSrc(win)" :src="imageSrc(win)" :alt="captionFor(win) || 'Winning proof'" class="win-image" loading="lazy" />
+            <div v-else class="win-image-empty">Winning Proof</div>
+            <div class="win-caption-bar">
+              <p class="win-caption">{{ captionFor(win) }}</p>
+            </div>
           </div>
-          <div v-else class="win-image-empty">Winning Proof</div>
-          <p class="win-caption">{{ captionFor(win) }}</p>
         </div>
       </div>
     </div>
@@ -120,39 +122,62 @@ h2 {
 .section-sub { color: var(--text-muted); font-size: 14px; margin: 0; }
 .winnings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 20px;
 }
 .win-card {
   background: var(--dark-card);
   border: 1px solid rgba(255, 215, 0, 0.12);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
 }
-.win-image-wrap, .win-image-empty {
+.win-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(255, 215, 0, 0.36);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.4);
+}
+.win-media {
+  position: relative;
   aspect-ratio: 4 / 3;
-  width: 100%;
+  overflow: hidden;
 }
-.win-image { display: block; height: 100%; object-fit: cover; width: 100%; }
+.win-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s;
+}
+.win-card:hover .win-image { transform: scale(1.05); }
 .win-image-empty {
-  align-items: center;
+  width: 100%;
+  height: 100%;
   background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(255, 255, 255, 0.03));
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.4);
   display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 12px;
   font-weight: 900;
-  justify-content: center;
   letter-spacing: 1px;
   text-transform: uppercase;
 }
+.win-caption-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 44px 14px 14px;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%);
+}
 .win-caption {
-  color: var(--white);
-  font-size: 14px;
-  line-height: 1.55;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
   margin: 0;
-  min-height: 66px;
-  padding: 16px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 @media (max-width: 700px) {
   .section-header { align-items: flex-start; flex-direction: column; }

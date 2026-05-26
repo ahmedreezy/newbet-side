@@ -1,24 +1,8 @@
 <template>
   <div class="vpe">
 
-    <!-- ── Special Ticket Banner ── -->
-    <div class="special-banner">
-      <div class="sb-left">
-        <span class="sb-icon">⭐</span>
-        <div>
-          <p class="sb-title">Special Ticket</p>
-          <p class="sb-sub">
-            Mark any package as <strong>Special</strong> below. Set its price to make it visible
-            to users in the VIP selection screen. Clear the price to hide it.
-          </p>
-        </div>
-      </div>
-      <div v-if="specialPackage" class="sb-active">
-        <span class="sb-active-label">ACTIVE</span>
-        <span class="sb-active-name">{{ specialPackage.name }}</span>
-        <span class="sb-active-price">{{ specialPackage.specialPrice != null ? Number(specialPackage.specialPrice).toLocaleString() + ' UGX' : 'No price set — hidden' }}</span>
-      </div>
-      <div v-else class="sb-none">No special ticket active</div>
+    <div class="section-lead">
+      Fixed VIP packages stay separate from the daily Special Odds offer. Edit prices, deadlines, and betslips here without converting any package into a special ticket.
     </div>
 
     <!-- ── Packages Table ── -->
@@ -32,8 +16,6 @@
               <th>Package</th>
               <th>Type</th>
               <th>Base Price</th>
-              <th class="th-special">⭐ Special</th>
-              <th class="th-special-price">Special Price</th>
               <th>Active</th>
               <th>Deadline</th>
               <th>Betslip Link</th>
@@ -45,11 +27,10 @@
             <tr
               v-for="pkg in packages"
               :key="pkg.id"
-              :class="{ 'row-special': pkg.isSpecial, 'row-inactive': !pkg.isActive }"
+              :class="{ 'row-inactive': !pkg.isActive }"
             >
               <!-- Name -->
               <td class="td-name">
-                <span v-if="pkg.isSpecial" class="special-star">⭐</span>
                 {{ pkg.name }}
                 <span class="td-sub">{{ pkg.oddsType }}x odds · {{ pkg.planType }}</span>
               </td>
@@ -69,31 +50,6 @@
                   step="500"
                   @change="pkg._dirty = true"
                 />
-              </td>
-
-              <!-- Special toggle -->
-              <td class="td-center">
-                <label class="toggle">
-                  <input type="checkbox" v-model="pkg._isSpecial" @change="onSpecialToggle(pkg)" />
-                  <span class="toggle-track"></span>
-                </label>
-              </td>
-
-              <!-- Special price (only editable when isSpecial) -->
-              <td class="td-num">
-                <template v-if="pkg._isSpecial">
-                  <input
-                    v-model="pkg._specialPrice"
-                    type="number"
-                    class="field-sm field-gold"
-                    min="0"
-                    step="500"
-                    placeholder="Set price to show"
-                    @change="pkg._dirty = true"
-                  />
-                  <span class="field-hint">Clear to hide</span>
-                </template>
-                <span v-else class="td-muted">—</span>
               </td>
 
               <!-- Active toggle -->
@@ -146,14 +102,14 @@
                   @click="savePackage(pkg)"
                   title="Save changes"
                 >
-                  {{ pkg._saving ? '…' : '💾' }}
+                  {{ pkg._saving ? 'Saving' : 'Save' }}
                 </button>
                 <button
                   class="btn-del"
                   @click="deletePackage(pkg)"
                   title="Delete package"
                 >
-                  🗑
+                  Del
                 </button>
               </td>
             </tr>
@@ -163,9 +119,62 @@
 
       <p v-if="saveError" class="vpe-error" style="margin-top:10px">{{ saveError }}</p>
 
+      <section class="special-panel">
+        <div class="special-panel-head">
+          <div>
+            <span class="panel-kicker">Special Odds</span>
+            <h3>Daily Special Offer</h3>
+          </div>
+          <span :class="['special-status', specialPackage && specialPackage._isActive && specialPackage._specialPrice !== '' ? 'is-live' : 'is-hidden']">
+            {{ specialPackage && specialPackage._isActive && specialPackage._specialPrice !== '' ? 'Visible to users' : 'Hidden from users' }}
+          </span>
+        </div>
+
+        <div v-if="specialPackage" class="special-grid">
+          <div class="special-field special-field-wide">
+            <label>Name</label>
+            <input v-model="specialPackage._name" type="text" placeholder="Special Odds" @input="specialPackage._dirty = true" />
+          </div>
+          <div class="special-field">
+            <label>Odds Value</label>
+            <input v-model="specialPackage._specialOdds" type="text" placeholder="e.g. 3.75" @input="specialPackage._dirty = true" />
+          </div>
+          <div class="special-field">
+            <label>Today's Price</label>
+            <input v-model="specialPackage._specialPrice" type="number" min="0" step="500" placeholder="Set price" @change="specialPackage._dirty = true" />
+          </div>
+          <div class="special-field special-toggle-field">
+            <label>Active</label>
+            <label class="toggle">
+              <input type="checkbox" v-model="specialPackage._isActive" @change="specialPackage._dirty = true" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="special-field">
+            <label>Deadline</label>
+            <input v-model="specialPackage._deadline" type="time" @change="specialPackage._dirty = true" />
+          </div>
+          <div class="special-field special-field-wide">
+            <label>Betslip Link</label>
+            <input v-model="specialPackage._betslipLink" type="url" placeholder="https://..." @input="specialPackage._dirty = true" />
+          </div>
+          <div class="special-field">
+            <label>Betslip Code</label>
+            <input v-model="specialPackage._betslipCode" type="text" placeholder="e.g. ABC123" @input="specialPackage._dirty = true" />
+          </div>
+          <div class="special-actions">
+            <button class="btn-save btn-save-large" :disabled="!specialPackage._dirty || specialPackage._saving" @click="savePackage(specialPackage)">
+              {{ specialPackage._saving ? 'Saving' : 'Save Special Odds' }}
+            </button>
+            <span class="field-hint">Clear today's price to hide it from users.</span>
+          </div>
+        </div>
+        <div v-else class="special-empty">No special odds package exists yet.</div>
+      </section>
+
       <!-- ── Add New Package ── -->
       <div class="add-section">
-        <h3 class="add-title">➕ Add New Package</h3>
+        <h3 class="add-title">Add Fixed VIP Package</h3>
         <form @submit.prevent="addPackage" class="add-form">
           <div class="add-row">
             <div class="add-field">
@@ -187,19 +196,11 @@
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
-                <option value="special">Special</option>
               </select>
             </div>
             <div class="add-field add-field-sm">
               <label>Base Price (UGX)</label>
               <input v-model.number="newPkg.price" type="number" min="0" step="500" placeholder="5000" required />
-            </div>
-            <div class="add-field add-field-toggle">
-              <label>Special?</label>
-              <label class="toggle">
-                <input type="checkbox" v-model="newPkg.isSpecial" />
-                <span class="toggle-track"></span>
-              </label>
             </div>
           </div>
           <p v-if="addError" class="vpe-error">{{ addError }}</p>
@@ -225,12 +226,8 @@ export default {
       saveError:  '',
       addError:   '',
       addLoading: false,
-      newPkg: { name: '', oddsType: '2', planType: 'weekly', price: 5000, isSpecial: false }
-    }
-  },
-  computed: {
-    specialPackage() {
-      return this.packages.find(p => p._isSpecial) || null
+      specialPackage: null,
+      newPkg: { name: '', oddsType: '2', planType: 'weekly', price: 5000 }
     }
   },
   async mounted() {
@@ -249,21 +246,24 @@ export default {
       this.fetchError = ''
       try {
         const { data } = await adminApi.get('/api/groups/admin')
-        this.packages = data.map(g => {
+        const mapped = data.map(g => {
           const norm = {
             ...g,
             isSpecial:            g.isSpecial            ?? g.is_special    ?? false,
             isActive:             g.isActive             ?? g.is_active     ?? true,
             specialPrice:         g.specialPrice != null ? g.specialPrice
                                 : g.special_price != null ? g.special_price : null,
+            specialOdds:          g.specialOdds ?? g.special_odds ?? '',
             betslipLink:          g.betslipLink  ?? g.betslip_link  ?? '',
             betslipCode:          g.betslipCode  ?? g.betslip_code  ?? '',
             subscriptionDeadline: g.subscriptionDeadline ?? g.subscription_deadline ?? null,
           }
           return {
             ...norm,
+            _name:         norm.name,
             _price:        norm.price,
             _specialPrice: norm.specialPrice != null ? norm.specialPrice : '',
+            _specialOdds:  norm.specialOdds || '',
             _betslipLink:  norm.betslipLink  || '',
             _betslipCode:  norm.betslipCode  || '',
             _isSpecial:    norm.isSpecial    || false,
@@ -273,24 +273,13 @@ export default {
             _saving:       false
           }
         })
+        this.specialPackage = mapped.find(g => g._isSpecial) || null
+        this.packages = mapped.filter(g => !g._isSpecial)
       } catch (err) {
         this.fetchError = err.response?.data?.error || 'Failed to load packages'
       } finally {
         this.loading = false
       }
-    },
-
-    onSpecialToggle(pkg) {
-      // Only one package can be special at a time
-      if (pkg._isSpecial) {
-        this.packages.forEach(p => {
-          if (p.id !== pkg.id && p._isSpecial) {
-            p._isSpecial = false
-            p._dirty = true
-          }
-        })
-      }
-      pkg._dirty = true
     },
 
     async savePackage(pkg) {
@@ -299,7 +288,7 @@ export default {
       try {
         // Laravel update() validates snake_case keys — must match exactly
         const payload = {
-          name:                  pkg.name,
+          name:                  pkg._name || pkg.name,
           price:                 Number(pkg._price),
           betslip_link:          pkg._betslipLink  || '',
           betslip_code:          pkg._betslipCode  || '',
@@ -308,24 +297,32 @@ export default {
           special_price:         pkg._isSpecial && pkg._specialPrice !== ''
             ? Number(pkg._specialPrice)
             : null,
+          special_odds:          pkg._isSpecial && pkg._specialOdds !== ''
+            ? pkg._specialOdds
+            : null,
           subscription_deadline: pkg._deadline || null
         }
         const { data } = await adminApi.patch('/api/groups/' + pkg.id, payload)
         // Sync back from camelCase response (GroupController.formatGroup returns camelCase)
         pkg.price        = data.price
+        pkg.name         = data.name
         pkg.specialPrice = data.specialPrice
+        pkg.specialOdds  = data.specialOdds
         pkg.betslipLink  = data.betslipLink
         pkg.betslipCode  = data.betslipCode
         pkg.isSpecial    = data.isSpecial
         pkg.isActive     = data.isActive
+        pkg._name         = data.name
         pkg._price        = data.price
         pkg._specialPrice = data.specialPrice != null ? data.specialPrice : ''
+        pkg._specialOdds  = data.specialOdds || ''
         pkg._betslipLink  = data.betslipLink  || ''
         pkg._betslipCode  = data.betslipCode  || ''
         pkg._isSpecial    = data.isSpecial    || false
         pkg._isActive     = data.isActive     !== false
         pkg._deadline     = data.subscriptionDeadline || ''
-        pkg._dirty  = false      } catch (err) {
+        pkg._dirty  = false
+      } catch (err) {
         this.saveError = err.response?.data?.error || err.response?.data?.message || 'Save failed'
       } finally {
         pkg._saving = false
@@ -352,13 +349,15 @@ export default {
           odds_type:  this.newPkg.oddsType,
           plan_type:  this.newPkg.planType,
           price:      Number(this.newPkg.price),
-          is_special: this.newPkg.isSpecial || false
+          is_special: false
         }
         const { data } = await adminApi.post('/api/groups', body)
         this.packages.push({
           ...data,
+          _name:         data.name,
           _price:        data.price,
           _specialPrice: data.specialPrice != null ? data.specialPrice : '',
+          _specialOdds:  data.specialOdds || '',
           _betslipLink:  data.betslipLink  || '',
           _betslipCode:  data.betslipCode  || '',
           _isSpecial:    data.isSpecial    || false,
@@ -366,7 +365,7 @@ export default {
           _dirty:        false,
           _saving:       false
         })
-        this.newPkg = { name: '', oddsType: '2', planType: 'weekly', price: 5000, isSpecial: false }
+        this.newPkg = { name: '', oddsType: '2', planType: 'weekly', price: 5000 }
       } catch (err) {
         this.addError = err.response?.data?.error || 'Failed to add package'
       } finally {
@@ -380,37 +379,26 @@ export default {
 <style scoped>
 .vpe { padding: 0 0 40px; }
 
-/* ── Special banner ── */
-.special-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,165,0,0.05));
-  border: 1px solid rgba(255,215,0,0.25);
-  border-radius: 14px;
-  padding: 18px 22px;
+.section-lead {
+  max-width: 860px;
+  color: rgba(255,255,255,0.58);
+  font-size: 14px;
+  line-height: 1.7;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-left: 3px solid #FFD700;
+  border-radius: 12px;
+  padding: 16px 18px;
   margin-bottom: 24px;
-  flex-wrap: wrap;
 }
-.sb-left { display: flex; align-items: flex-start; gap: 14px; }
-.sb-icon { font-size: 28px; line-height: 1; }
-.sb-title { font-size: 15px; font-weight: 800; color: #FFD700; margin: 0 0 4px; }
-.sb-sub   { font-size: 12px; color: rgba(255,255,255,0.55); margin: 0; line-height: 1.5; max-width: 420px; }
-.sb-sub strong { color: #FFD700; }
-.sb-active { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.sb-active-label { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #000; background: #4caf50; border-radius: 6px; padding: 3px 8px; }
-.sb-active-name  { font-size: 14px; font-weight: 700; color: #fff; }
-.sb-active-price { font-size: 14px; font-weight: 700; color: #FFD700; }
-.sb-none { font-size: 13px; color: rgba(255,255,255,0.35); font-style: italic; }
 
 /* ── Table ── */
-.vpe-table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,0.07); }
+.vpe-table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(12,12,12,0.72); }
 .vpe-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 860px;
+  min-width: 940px;
 }
 .vpe-table thead tr { background: rgba(255,255,255,0.04); }
 .vpe-table th {
@@ -424,26 +412,21 @@ export default {
   border-bottom: 1px solid rgba(255,255,255,0.07);
   white-space: nowrap;
 }
-.th-special       { color: #FFD700; }
-.th-special-price { color: rgba(255,215,0,0.6); }
 .vpe-table td {
-  padding: 11px 14px;
+  padding: 13px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   vertical-align: middle;
   color: rgba(255,255,255,0.85);
 }
 .vpe-table tbody tr:last-child td { border-bottom: none; }
 .vpe-table tbody tr:hover { background: rgba(255,255,255,0.03); }
-.row-special { background: rgba(255,215,0,0.04) !important; }
 .row-inactive { opacity: 0.5; }
 
 .td-name { font-weight: 600; }
 .td-sub  { display: block; font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 400; margin-top: 2px; }
 .td-num  { white-space: nowrap; }
 .td-center { text-align: center; }
-.td-muted  { color: rgba(255,255,255,0.25); }
 .td-actions { white-space: nowrap; }
-.special-star { margin-right: 4px; }
 
 /* Badges */
 .badge {
@@ -471,7 +454,6 @@ export default {
   font-size: 13px;
   outline: none;
 }
-.field-gold { border-color: rgba(255,215,0,0.35); color: #FFD700; background: rgba(255,215,0,0.06); }
 .field-url, .field-code {
   width: 100%;
   min-width: 120px;
@@ -513,10 +495,11 @@ export default {
   background: rgba(255,215,0,0.12);
   border: 1px solid rgba(255,215,0,0.3);
   border-radius: 7px;
-  padding: 5px 10px;
+  padding: 7px 12px;
   color: #FFD700;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
   transition: background 0.2s;
   margin-right: 6px;
 }
@@ -526,27 +509,97 @@ export default {
   background: rgba(255,82,82,0.1);
   border: 1px solid rgba(255,82,82,0.25);
   border-radius: 7px;
-  padding: 5px 10px;
+  padding: 7px 12px;
   color: #ff5252;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
   transition: background 0.2s;
 }
 .btn-del:hover { background: rgba(255,82,82,0.22); }
 
+/* ── Special odds panel ── */
+.special-panel {
+  margin-top: 28px;
+  background: linear-gradient(135deg, rgba(255,215,0,0.07), rgba(255,255,255,0.025));
+  border: 1px solid rgba(255,215,0,0.18);
+  border-radius: 16px;
+  padding: 22px 24px 24px;
+}
+.special-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.panel-kicker {
+  display: block;
+  color: #FFD700;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.special-panel h3 { color: #fff; font-size: 18px; margin: 0; }
+.special-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.special-status.is-live { background: rgba(0,200,83,0.14); color: #00c853; }
+.special-status.is-hidden { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.52); }
+.special-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 110px 150px;
+  gap: 14px;
+  align-items: end;
+}
+.special-field { display: flex; flex-direction: column; gap: 7px; }
+.special-field-wide { grid-column: span 2; }
+.special-field label {
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.special-field input {
+  width: 100%;
+  background: rgba(0,0,0,0.24);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 9px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  padding: 10px 12px;
+}
+.special-field input:focus { border-color: rgba(255,215,0,0.42); }
+.special-toggle-field { align-items: flex-start; }
+.special-actions { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; margin-top: 4px; }
+.btn-save-large { padding: 10px 18px; font-size: 13px; }
+.special-empty { color: rgba(255,255,255,0.45); font-size: 13px; }
+
 /* ── Add section ── */
 .add-section {
   margin-top: 28px;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.025);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 14px;
   padding: 22px 24px;
 }
-.add-title { font-size: 14px; font-weight: 800; color: #fff; margin: 0 0 18px; }
+.add-title { font-size: 16px; font-weight: 800; color: #fff; margin: 0 0 18px; }
 .add-row   { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
 .add-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
 .add-field-sm { flex: 0 0 130px; min-width: 0; }
-.add-field-toggle { flex: 0 0 80px; align-items: center; gap: 10px; flex-direction: row; padding-bottom: 4px; }
 .add-field label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.6px; }
 .add-field input,
 .add-field select {
@@ -577,4 +630,16 @@ export default {
 
 .vpe-loading { color: rgba(255,255,255,0.5); padding: 32px 0; text-align: center; }
 .vpe-error { color: #ff5252; font-size: 13px; background: rgba(255,82,82,0.08); border-radius: 8px; padding: 10px 14px; }
+
+@media (max-width: 1100px) {
+  .special-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .special-field-wide { grid-column: span 2; }
+}
+
+@media (max-width: 640px) {
+  .special-panel-head { flex-direction: column; }
+  .special-grid { grid-template-columns: 1fr; }
+  .special-field-wide, .special-actions { grid-column: auto; }
+  .special-actions { flex-direction: column; align-items: flex-start; }
+}
 </style>
