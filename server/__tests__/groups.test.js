@@ -53,6 +53,14 @@ function buildPool () {
     )
   `)
 
+  db.public.none(`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id       SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES groups(id),
+      status   VARCHAR(20) NOT NULL DEFAULT 'pending'
+    )
+  `)
+
   // Seed the 5 required packages (mirrors seed.js)
   db.public.none(`
     INSERT INTO groups (name, odds_type, plan_type, price, is_special, is_active, special_price, special_odds)
@@ -306,6 +314,44 @@ describe('PATCH /api/groups/:id — admin update', () => {
 
   test('returns 401 without auth', async () => {
     const res = await request.patch(`/api/groups/${weeklyOdd5Id}`).send({ price: 1 })
+    expect(res.status).toBe(401)
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// DELETE /api/groups/:id — Admin delete
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('DELETE /api/groups/:id — admin delete', () => {
+  test('admin can delete a group referenced by subscriptions', async () => {
+    const { rows: [created] } = await global.__groupTestPool.query(`
+      INSERT INTO groups (name, odds_type, plan_type, price)
+      VALUES ('Temporary VIP', '2', 'daily', 5000)
+      RETURNING id
+    `)
+    await global.__groupTestPool.query(
+      `INSERT INTO subscriptions (group_id, status) VALUES ($1, 'pending')`,
+      [created.id]
+    )
+
+    const res = await request.delete(`/api/groups/${created.id}`).set(authHeader())
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+
+    const { rows: groupRows } = await global.__groupTestPool.query('SELECT id FROM groups WHERE id = $1', [created.id])
+    expect(groupRows.length).toBe(0)
+
+    const { rows: subRows } = await global.__groupTestPool.query('SELECT group_id FROM subscriptions WHERE status = $1', ['pending'])
+    expect(subRows.some(s => s.group_id === created.id)).toBe(false)
+  })
+
+  test('returns 404 for a non-existent group', async () => {
+    const res = await request.delete('/api/groups/99999').set(authHeader())
+    expect(res.status).toBe(404)
+  })
+
+  test('returns 401 without auth', async () => {
+    const res = await request.delete('/api/groups/1')
     expect(res.status).toBe(401)
   })
 })
