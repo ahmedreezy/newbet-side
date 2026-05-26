@@ -60,7 +60,7 @@
         <div v-for="pick in todayPicks" :key="pick.id" class="pick-card" :style="{ '--accent': pick.accent }">
           <!-- Full-width image -->
           <div class="pick-img-bar">
-            <img v-if="pick.imageUrl" :src="pick.imageUrl" :alt="pick.caption || 'prediction'" class="pick-card-img" />
+            <img v-if="pick.imageUrl || pick.image_url" :src="pick.imageUrl || pick.image_url" :alt="pick.caption || 'prediction'" class="pick-card-img" />
             <div v-else class="pick-img-placeholder">
               <svg viewBox="0 0 80 54" width="56" height="38" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
                 <path d="M14,4 L2,18 L14,18 L14,50 L66,50 L66,18 L78,18 L66,4 L54,10 L48,7 L40,9 L32,7 L26,10 Z"
@@ -76,31 +76,13 @@
             <div class="pick-prob-bar">
               <div class="pick-prob-header">
                 <span class="pick-prob-label">⚡ WIN PROB</span>
-                <span class="pick-prob-val">{{ pick.winProb }}%</span>
+                <span class="pick-prob-val">{{ pick.winProb || pick.win_prob || 75 }}%</span>
               </div>
               <div class="pick-prob-track">
-                <div class="pick-prob-fill" :style="{ width: pick.winProb + '%' }"></div>
-              </div>
-            </div>
-            <!-- Locked tip OR revealed prediction for active VIP -->
-            <div v-if="userActiveSub" class="pick-revealed-row">
-              <span class="unlock-icon" aria-hidden="true">🔓</span>
-              <div class="pick-tip-text">{{ pick.prediction || 'Tip available — check betslip below' }}</div>
-            </div>
-            <div v-else class="pick-locked-row">
-              <span class="lock-icon" aria-hidden="true">🔒</span>
-              <div class="lock-text-wrap">
-                <span class="lock-text">Expert tip hidden</span>
-                <span class="lock-sub">VIP members only</span>
+                <div class="pick-prob-fill" :style="{ width: (pick.winProb || pick.win_prob || 75) + '%' }"></div>
               </div>
             </div>
             <div class="pick-footer">
-              <div class="pick-time">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                {{ pick.kickoff }}
-              </div>
               <button v-if="!userActiveSub" class="pick-vip-btn" @click="openVipMenu">
                 👑 Join VIP
               </button>
