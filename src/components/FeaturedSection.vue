@@ -135,6 +135,18 @@
             <p class="mm-sub">Select a package to unlock expert predictions</p>
             <div v-if="groupsLoading" class="pkg-loading">Loading packages…</div>
             <div v-else-if="groupsError" class="pkg-error">{{ groupsError }}</div>
+            <div v-else-if="visibleGroups.length === 0" class="pkg-empty">
+              <div class="pkg-empty-icon">
+                <svg viewBox="0 0 48 48" width="52" height="52" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="22" stroke="rgba(255,215,0,0.25)" stroke-width="2"/>
+                  <path d="M24 12v14" stroke="#FFD700" stroke-width="2.5" stroke-linecap="round"/>
+                  <circle cx="24" cy="33" r="2" fill="#FFD700"/>
+                </svg>
+              </div>
+              <p class="pkg-empty-title">No Active Packages Today</p>
+              <p class="pkg-empty-body">Our team is preparing today's VIP packages. Check back shortly — new packages are typically published before noon.</p>
+              <a v-if="vipCfg.whatsapp_link" :href="vipCfg.whatsapp_link" target="_blank" rel="noopener" class="pkg-empty-wa">💬 Get notified on WhatsApp</a>
+            </div>
             <div v-else class="pkg-grid" role="radiogroup" aria-label="Select a VIP package">
               <div
                 v-for="group in visibleGroups"
@@ -176,9 +188,9 @@
               </div>
             </div>
             <button class="mm-next-btn"
-              :disabled="!selectedGroup || selectedGroup.isClosed"
+              :disabled="visibleGroups.length === 0 || !selectedGroup || selectedGroup.isClosed"
               @click="goToAuthStep">
-              {{ selectedGroup && selectedGroup.isClosed ? 'Package closed for today' : 'Continue →' }}
+              {{ visibleGroups.length === 0 ? 'No packages available' : selectedGroup && selectedGroup.isClosed ? 'Package closed for today' : 'Continue →' }}
             </button>
             <p class="mm-check-link" @click="openMySubscriptions">View My Subscriptions</p>
           </template>
@@ -1766,6 +1778,47 @@ export default {
 /* ── Package Selection List (Step 1) ── */
 .pkg-loading { color: var(--text-muted); padding: 32px; text-align: center; font-size: 14px; }
 .pkg-error   { color: #ff6b6b; padding: 12px; text-align: center; font-size: 13px; }
+.pkg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 16px 20px;
+  margin-bottom: 20px;
+  background: rgba(255,215,0,0.04);
+  border: 1px solid rgba(255,215,0,0.12);
+  border-radius: 12px;
+}
+.pkg-empty-icon { margin-bottom: 12px; opacity: 0.85; }
+.pkg-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #FFD700;
+  letter-spacing: 0.3px;
+  margin: 0 0 8px;
+}
+.pkg-empty-body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 280px;
+  margin: 0 0 14px;
+}
+.pkg-empty-wa {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #25D366;
+  background: rgba(37,211,102,0.1);
+  border: 1px solid rgba(37,211,102,0.22);
+  border-radius: 20px;
+  padding: 6px 14px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.pkg-empty-wa:hover { background: rgba(37,211,102,0.18); }
 
 .pkg-grid {
   display: flex;
