@@ -133,16 +133,33 @@ router.post('/', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' })
+  const client = await pool.connect()
   try {
-    const { rows } = await pool.query('SELECT id FROM groups WHERE id = $1', [id])
-    if (rows.length === 0) return res.status(404).json({ error: 'Group not found' })
+    await client.query('BEGIN')
 
-    await pool.query('UPDATE subscriptions SET group_id = NULL WHERE group_id = $1', [id])
-    await pool.query('DELETE FROM groups WHERE id = $1', [id])
-    res.json({ success: true })
+    const { rows } = await client.query('SELECT id FROM groups WHERE id = $1', [id])
+    if (rows.length === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Group not found' })
+    }
+
+    const detached = await client.query('UPDATE subscriptions SET group_id = NULL WHERE group_id = $1', [id])
+    await client.query('DELETE FROM groups WHERE id = $1', [id])
+    await client.query('COMMIT')
+
+    res.json({
+      success: true,
+      detachedSubscriptions: detached.rowCount,
+      message: detached.rowCount > 0
+        ? `Package deleted. ${detached.rowCount} linked subscription${detached.rowCount === 1 ? '' : 's'} were kept and detached from this package.`
+        : 'Package deleted.'
+    })
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ error: 'Server error' })
+  } finally {
+    client.release()
   }
 })
 

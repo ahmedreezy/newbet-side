@@ -1,5 +1,17 @@
 <template>
   <div class="vpe">
+    <transition name="vpe-notice">
+      <div
+        v-if="notice.message"
+        :class="['vpe-notice', 'notice-' + notice.type]"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="notice-title">{{ notice.type === 'success' ? 'Success' : 'Action needed' }}</span>
+        <span class="notice-message">{{ notice.message }}</span>
+        <button class="notice-close" type="button" @click="clearNotice" aria-label="Dismiss">×</button>
+      </div>
+    </transition>
 
     <!-- ── Special Ticket Banner ── -->
     <div class="special-banner">
@@ -150,10 +162,11 @@
                 </button>
                 <button
                   class="btn-del"
+                  :disabled="pkg._deleting"
                   @click="deletePackage(pkg)"
                   title="Delete package"
                 >
-                  🗑
+                  {{ pkg._deleting ? '…' : '🗑' }}
                 </button>
               </td>
             </tr>
@@ -225,6 +238,8 @@ export default {
       saveError:  '',
       addError:   '',
       addLoading: false,
+      notice:     { type: 'success', message: '' },
+      noticeTimer: null,
       newPkg: { name: '', oddsType: '2', planType: 'weekly', price: 5000, isSpecial: false }
     }
   },
@@ -236,7 +251,22 @@ export default {
   async mounted() {
     await this.fetchPackages()
   },
+  beforeUnmount() {
+    if (this.noticeTimer) clearTimeout(this.noticeTimer)
+  },
   methods: {
+    showNotice(type, message) {
+      if (this.noticeTimer) clearTimeout(this.noticeTimer)
+      this.notice = { type, message }
+      this.noticeTimer = setTimeout(() => {
+        this.clearNotice()
+      }, 7000)
+    },
+    clearNotice() {
+      if (this.noticeTimer) clearTimeout(this.noticeTimer)
+      this.noticeTimer = null
+      this.notice = { type: 'success', message: '' }
+    },
     formatDeadline(hhmm) {
       if (!hhmm) return ''
       const [h, m] = hhmm.split(':').map(Number)
@@ -270,7 +300,8 @@ export default {
             _isActive:     norm.isActive     !== false,
             _deadline:     norm.subscriptionDeadline || '',
             _dirty:        false,
-            _saving:       false
+            _saving:       false,
+            _deleting:     false
           }
         })
       } catch (err) {
@@ -325,8 +356,11 @@ export default {
         pkg._isSpecial    = data.isSpecial    || false
         pkg._isActive     = data.isActive     !== false
         pkg._deadline     = data.subscriptionDeadline || ''
-        pkg._dirty  = false      } catch (err) {
-        this.saveError = err.response?.data?.error || err.response?.data?.message || 'Save failed'
+        pkg._dirty  = false
+        this.showNotice('success', `"${pkg.name}" was saved.`)
+      } catch (err) {
+        this.saveError = err.response?.data?.message || err.response?.data?.error || 'Save failed'
+        this.showNotice('error', this.saveError)
       } finally {
         pkg._saving = false
       }
@@ -334,11 +368,17 @@ export default {
 
     async deletePackage(pkg) {
       if (!confirm(`Delete "${pkg.name}"? This cannot be undone.`)) return
+      pkg._deleting = true
+      this.saveError = ''
       try {
-        await adminApi.delete('/api/groups/' + pkg.id)
+        const { data } = await adminApi.delete('/api/groups/' + pkg.id)
         this.packages = this.packages.filter(p => p.id !== pkg.id)
+        this.showNotice('success', data.message || `"${pkg.name}" was deleted.`)
       } catch (err) {
-        this.saveError = err.response?.data?.error || 'Delete failed'
+        this.saveError = err.response?.data?.message || err.response?.data?.error || 'Delete failed'
+        this.showNotice('error', this.saveError)
+      } finally {
+        pkg._deleting = false
       }
     },
 
@@ -364,11 +404,14 @@ export default {
           _isSpecial:    data.isSpecial    || false,
           _isActive:     data.isActive     !== false,
           _dirty:        false,
-          _saving:       false
+          _saving:       false,
+          _deleting:     false
         })
         this.newPkg = { name: '', oddsType: '2', planType: 'weekly', price: 5000, isSpecial: false }
+        this.showNotice('success', `"${data.name}" was added.`)
       } catch (err) {
-        this.addError = err.response?.data?.error || 'Failed to add package'
+        this.addError = err.response?.data?.message || err.response?.data?.error || 'Failed to add package'
+        this.showNotice('error', this.addError)
       } finally {
         this.addLoading = false
       }
@@ -532,7 +575,58 @@ export default {
   font-size: 14px;
   transition: background 0.2s;
 }
-.btn-del:hover { background: rgba(255,82,82,0.22); }
+.btn-del:hover:not(:disabled) { background: rgba(255,82,82,0.22); }
+.btn-del:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Admin response notice */
+.vpe-notice {
+  position: fixed;
+  top: 58px;
+  right: 18px;
+  z-index: 10000;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  width: min(420px, calc(100vw - 36px));
+  padding: 14px 16px;
+  background: #151515;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+  color: #fff;
+}
+.notice-success { border-color: rgba(76,175,80,0.45); }
+.notice-error { border-color: rgba(255,82,82,0.45); }
+.notice-title {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #FFD700;
+}
+.notice-error .notice-title { color: #ff6b6b; }
+.notice-message {
+  grid-column: 1 / 2;
+  color: rgba(255,255,255,0.82);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.notice-close {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+.notice-close:hover { color: #fff; }
+.vpe-notice-enter-active,
+.vpe-notice-leave-active { transition: opacity 0.18s, transform 0.18s; }
+.vpe-notice-enter-from,
+.vpe-notice-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* ── Add section ── */
 .add-section {
