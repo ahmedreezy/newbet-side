@@ -227,13 +227,16 @@ export default {
 <style scoped>
 .dashboard {
   display: flex;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
   background:
     radial-gradient(circle at top left, rgba(255,215,0,0.08), transparent 34%),
     linear-gradient(135deg, #070707 0%, #0e0e0e 46%, #111 100%);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--white);
+}
+/* Fixed-frame (sticky sidebar) only on screens wide enough to show the sidebar */
+@media (min-width: 769px) {
+  .dashboard { height: 100vh; overflow: hidden; }
 }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
@@ -245,8 +248,9 @@ export default {
   display: flex;
   flex-direction: column;
   padding: 30px 18px 24px;
-  height: 100vh;
-  overflow-y: auto;
+}
+@media (min-width: 769px) {
+  .sidebar { height: 100vh; overflow-y: auto; }
 }
 
 .sidebar-logo {
