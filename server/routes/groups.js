@@ -3,6 +3,39 @@ const router   = express.Router()
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
 
+function kampalaNowInput() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Kampala',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date()).reduce((acc, part) => {
+    acc[part.type] = part.value
+    return acc
+  }, {})
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
+function normalizeDeadlineForCompare(value) {
+  if (!value) return ''
+  const deadline = String(value)
+  if (/^\d{2}:\d{2}$/.test(deadline)) return `${kampalaNowInput().slice(0, 10)}T${deadline}`
+  return deadline.slice(0, 16)
+}
+
+function isDeadlineClosed(value) {
+  const deadline = normalizeDeadlineForCompare(value)
+  return !!deadline && kampalaNowInput() > deadline
+}
+
+function isPastOrCurrentDeadline(value) {
+  const deadline = normalizeDeadlineForCompare(value)
+  return !!deadline && kampalaNowInput() >= deadline
+}
+
 function formatGroup(g) {
   return {
     id:                   g.id,
@@ -16,7 +49,8 @@ function formatGroup(g) {
     isActive:             g.is_active     !== false,
     specialPrice:         g.special_price != null ? parseFloat(g.special_price) : null,
     specialOdds:          g.special_odds  || null,
-    subscriptionDeadline: g.subscription_deadline || null
+    subscriptionDeadline: g.subscription_deadline || null,
+    isClosed:             isDeadlineClosed(g.subscription_deadline)
   }
 }
 
@@ -63,6 +97,9 @@ router.patch('/:id', auth, async (req, res) => {
   const specialPrice = body.specialPrice ?? body.special_price
   const specialOdds = body.specialOdds ?? body.special_odds
   const subscriptionDeadline = body.subscriptionDeadline ?? body.subscription_deadline
+  if (subscriptionDeadline && isPastOrCurrentDeadline(subscriptionDeadline)) {
+    return res.status(400).json({ error: 'Deadline must be a future date and time.' })
+  }
   const sets = []; const vals = []; let i = 1
   if (name         !== undefined) { sets.push(`name = $${i++}`);          vals.push(name) }
   if (price        !== undefined) { sets.push(`price = $${i++}`);         vals.push(parseFloat(price)) }
@@ -133,16 +170,33 @@ router.post('/', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' })
+  const client = await pool.connect()
   try {
-    const { rows } = await pool.query('SELECT id FROM groups WHERE id = $1', [id])
-    if (rows.length === 0) return res.status(404).json({ error: 'Group not found' })
+    await client.query('BEGIN')
 
-    await pool.query('UPDATE subscriptions SET group_id = NULL WHERE group_id = $1', [id])
-    await pool.query('DELETE FROM groups WHERE id = $1', [id])
-    res.json({ success: true })
+    const { rows } = await client.query('SELECT id FROM groups WHERE id = $1', [id])
+    if (rows.length === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Group not found' })
+    }
+
+    const detached = await client.query('UPDATE subscriptions SET group_id = NULL WHERE group_id = $1', [id])
+    await client.query('DELETE FROM groups WHERE id = $1', [id])
+    await client.query('COMMIT')
+
+    res.json({
+      success: true,
+      detachedSubscriptions: detached.rowCount,
+      message: detached.rowCount > 0
+        ? `Package deleted. ${detached.rowCount} linked subscription${detached.rowCount === 1 ? '' : 's'} were kept and detached from this package.`
+        : 'Package deleted.'
+    })
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ error: 'Server error' })
+  } finally {
+    client.release()
   }
 })
 

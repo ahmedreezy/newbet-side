@@ -337,6 +337,8 @@ describe('DELETE /api/groups/:id — admin delete', () => {
     const res = await request.delete(`/api/groups/${created.id}`).set(authHeader())
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
+    expect(res.body.detachedSubscriptions).toBe(1)
+    expect(res.body.message).toContain('linked subscription')
 
     const { rows: groupRows } = await global.__groupTestPool.query('SELECT id FROM groups WHERE id = $1', [created.id])
     expect(groupRows.length).toBe(0)

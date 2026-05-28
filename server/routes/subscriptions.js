@@ -5,6 +5,49 @@ const http     = require('http')
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
 
+function kampalaNowInput() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Kampala',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date()).reduce((acc, part) => {
+    acc[part.type] = part.value
+    return acc
+  }, {})
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
+function normalizeDeadlineForCompare(value) {
+  if (!value) return ''
+  const deadline = String(value)
+  if (/^\d{2}:\d{2}$/.test(deadline)) return `${kampalaNowInput().slice(0, 10)}T${deadline}`
+  return deadline.slice(0, 16)
+}
+
+function isDeadlineClosed(value) {
+  const deadline = normalizeDeadlineForCompare(value)
+  return !!deadline && kampalaNowInput() > deadline
+}
+
+function rowToGroup(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    oddsType: row.odds_type,
+    planType: row.plan_type,
+    price: parseFloat(row.price),
+    isSpecial: row.is_special || false,
+    isActive: row.is_active !== false,
+    specialPrice: row.special_price != null ? parseFloat(row.special_price) : null,
+    subscriptionDeadline: row.subscription_deadline || null,
+    isClosed: isDeadlineClosed(row.subscription_deadline)
+  }
+}
+
 // ─── Jpesa STK Push helper ────────────────────────────────────────────────────
 // Jpesa's PHP sample disables SSL verification (CURLOPT_SSL_VERIFYPEER=>0).
 // We replicate that using the native https module with rejectUnauthorized:false.
@@ -191,6 +234,24 @@ router.post('/', async (req, res) => {
     if (group.is_special) {
       if (!group.is_active || !group.special_price)
         return res.status(400).json({ error: 'Special odds are not available today. Check back later.' })
+    }
+
+    if (isDeadlineClosed(group.subscription_deadline)) {
+      const { rows: alternativeRows } = await pool.query(`
+        SELECT * FROM groups
+        WHERE id <> $1
+          AND is_active = TRUE
+          AND (is_special = FALSE OR special_price IS NOT NULL)
+        ORDER BY price ASC
+      `, [parsedGroupId])
+      const alternatives = alternativeRows
+        .filter(g => !isDeadlineClosed(g.subscription_deadline))
+        .map(rowToGroup)
+      return res.status(422).json({
+        error: 'Package deadline has passed',
+        message: 'This VIP package is closed for new subscriptions. Please choose another available package.',
+        alternatives
+      })
     }
 
     // Validate user

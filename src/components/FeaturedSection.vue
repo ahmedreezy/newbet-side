@@ -191,7 +191,7 @@
             <button class="mm-next-btn"
               :disabled="visibleGroups.length === 0 || !selectedGroup || selectedGroup.isClosed"
               @click="goToAuthStep">
-              {{ visibleGroups.length === 0 ? 'No packages available' : selectedGroup && selectedGroup.isClosed ? 'Package closed for today' : 'Continue →' }}
+              {{ visibleGroups.length === 0 ? 'No packages available' : selectedGroup && selectedGroup.isClosed ? 'Package closed' : 'Continue →' }}
             </button>
             <p class="mm-check-link" @click="openMySubscriptions">View My Subscriptions</p>
           </template>
@@ -876,22 +876,25 @@ export default {
       try {
         const { data } = await axios.get('/api/groups')
         // Normalize: handle both snake_case (Laravel) and camelCase (Node.js)
-        this.groups = data.map(g => ({
-          id:                   g.id,
-          name:                 g.name,
-          oddsType:             g.oddsType     ?? g.odds_type     ?? '',
-          planType:             g.planType     ?? g.plan_type     ?? '',
-          price:                parseFloat(g.price) || 0,
-          betslipLink:          g.betslipLink  ?? g.betslip_link  ?? '',
-          betslipCode:          g.betslipCode  ?? g.betslip_code  ?? '',
-          isSpecial:            g.isSpecial    ?? g.is_special    ?? false,
-          isActive:             g.isActive     ?? g.is_active     ?? true,
-          specialPrice:         g.specialPrice != null ? parseFloat(g.specialPrice)
-                              : g.special_price != null ? parseFloat(g.special_price) : null,
-          subscriptionDeadline: g.subscriptionDeadline ?? g.subscription_deadline ?? null,
-          isClosed:             g.isClosed     ?? false,
-          photoUrl:             g.photoUrl     ?? g.photo_url     ?? '',
-        }))
+        this.groups = data.map(g => {
+          const subscriptionDeadline = g.subscriptionDeadline ?? g.subscription_deadline ?? null
+          return {
+            id:                   g.id,
+            name:                 g.name,
+            oddsType:             g.oddsType     ?? g.odds_type     ?? '',
+            planType:             g.planType     ?? g.plan_type     ?? '',
+            price:                parseFloat(g.price) || 0,
+            betslipLink:          g.betslipLink  ?? g.betslip_link  ?? '',
+            betslipCode:          g.betslipCode  ?? g.betslip_code  ?? '',
+            isSpecial:            g.isSpecial    ?? g.is_special    ?? false,
+            isActive:             g.isActive     ?? g.is_active     ?? true,
+            specialPrice:         g.specialPrice != null ? parseFloat(g.specialPrice)
+                                : g.special_price != null ? parseFloat(g.special_price) : null,
+            subscriptionDeadline,
+            isClosed:             (g.isClosed ?? false) || this.isDeadlineClosed(subscriptionDeadline),
+            photoUrl:             g.photoUrl     ?? g.photo_url     ?? '',
+          }
+        })
       } catch {
         this.groupsError = 'Could not load packages. Please refresh and try again.'
       } finally {
@@ -1137,7 +1140,7 @@ export default {
           this.vipStep = 'processing'
           this.startPolling()
         } else if (err.response?.status === 422 && err.response?.data?.alternatives) {
-          // Package closed for today — show alternatives
+          // Package closed by deadline — show alternatives
           this.deadlineMessage      = err.response.data.message
           this.deadlineAlternatives = err.response.data.alternatives
           this.vipStep = 'deadline-closed'
@@ -1226,12 +1229,41 @@ export default {
       if (!ts) return 'N/A'
       return new Date(ts).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })
     },
-    formatDeadline(hhmm) {
-      if (!hhmm) return ''
-      const [h, m] = hhmm.split(':').map(Number)
-      const ampm = h >= 12 ? 'PM' : 'AM'
-      const hour = h % 12 || 12
-      return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+    kampalaNowInput() {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Kampala',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(new Date()).reduce((acc, part) => {
+        acc[part.type] = part.value
+        return acc
+      }, {})
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+    },
+    normalizeDeadlineForCompare(value) {
+      if (!value) return ''
+      if (/^\d{2}:\d{2}$/.test(value)) return `${this.kampalaNowInput().slice(0, 10)}T${value}`
+      return String(value).slice(0, 16)
+    },
+    isDeadlineClosed(value) {
+      const deadline = this.normalizeDeadlineForCompare(value)
+      return !!deadline && this.kampalaNowInput() > deadline
+    },
+    formatDeadline(value) {
+      if (!value) return ''
+      const normalized = this.normalizeDeadlineForCompare(value)
+      const date = new Date(normalized)
+      if (Number.isNaN(date.getTime())) return value
+      return date.toLocaleString('en-UG', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      })
     },
     async copyCode(code) {
       try {

@@ -1,5 +1,5 @@
 require('dotenv').config()
-const { pool } = require('./db')
+const { pool, isInMemory } = require('./db')
 
 async function migrate() {
   const client = await pool.connect()
@@ -173,20 +173,23 @@ async function migrate() {
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_active     BOOLEAN      NOT NULL DEFAULT TRUE;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_price NUMERIC(12,2);
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_odds  VARCHAR(50);
-      ALTER TABLE groups ADD COLUMN IF NOT EXISTS subscription_deadline VARCHAR(5);
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS subscription_deadline VARCHAR(16);
+      ALTER TABLE groups ALTER COLUMN subscription_deadline TYPE VARCHAR(16);
     `)
 
     // Ensure UNIQUE constraint on groups.name exists (for ON CONFLICT upserts)
-    await client.query(`
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conrelid = 'groups'::regclass AND conname = 'groups_name_key'
-        ) THEN
-          ALTER TABLE groups ADD CONSTRAINT groups_name_key UNIQUE (name);
-        END IF;
-      END $$;
-    `)
+    if (!isInMemory) {
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'groups'::regclass AND conname = 'groups_name_key'
+          ) THEN
+            ALTER TABLE groups ADD CONSTRAINT groups_name_key UNIQUE (name);
+          END IF;
+        END $$;
+      `)
+    }
 
     // ─── Link subscriptions → groups + payment references ───────────────────
     await client.query(`
