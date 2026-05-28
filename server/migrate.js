@@ -173,7 +173,8 @@ async function migrate() {
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_active     BOOLEAN      NOT NULL DEFAULT TRUE;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_price NUMERIC(12,2);
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS special_odds  VARCHAR(50);
-      ALTER TABLE groups ADD COLUMN IF NOT EXISTS subscription_deadline VARCHAR(5);
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS subscription_deadline VARCHAR(16);
+      ALTER TABLE groups ALTER COLUMN subscription_deadline TYPE VARCHAR(16);
     `)
 
     // Ensure UNIQUE constraint on groups.name exists (for ON CONFLICT upserts)

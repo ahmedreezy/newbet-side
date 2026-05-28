@@ -65,10 +65,11 @@
               <td>
                 <input
                   v-model="pkg._deadline"
-                  type="time"
-                  class="field-sm"
+                  type="datetime-local"
+                  class="field-deadline"
+                  :min="minDeadlineInput()"
                   @change="pkg._dirty = true"
-                  title="Block new subscriptions after this time today (leave blank for no deadline)"
+                  title="Block new subscriptions after this date and time (leave blank for no deadline)"
                 />
                 <span v-if="pkg._deadline" class="field-hint">Closes {{ formatDeadline(pkg._deadline) }}</span>
               </td>
@@ -164,7 +165,7 @@
           </div>
           <div class="special-field">
             <label>Deadline</label>
-            <input v-model="specialPackage._deadline" type="time" @change="specialPackage._dirty = true" />
+            <input v-model="specialPackage._deadline" type="datetime-local" :min="minDeadlineInput()" @change="specialPackage._dirty = true" />
           </div>
           <div class="special-field special-field-wide">
             <label>Betslip Link</label>
@@ -283,12 +284,47 @@ export default {
       this.noticeTimer = null
       this.notice = { type: 'success', message: '' }
     },
-    formatDeadline(hhmm) {
-      if (!hhmm) return ''
-      const [h, m] = hhmm.split(':').map(Number)
-      const ampm = h >= 12 ? 'PM' : 'AM'
-      const hour = h % 12 || 12
-      return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+    todayInputDate() {
+      const d = new Date()
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    },
+    formatDateTimeInput(d) {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      const h = String(d.getHours()).padStart(2, '0')
+      const min = String(d.getMinutes()).padStart(2, '0')
+      return `${y}-${m}-${day}T${h}:${min}`
+    },
+    currentDeadlineInput() {
+      return this.formatDateTimeInput(new Date())
+    },
+    minDeadlineInput() {
+      return this.formatDateTimeInput(new Date(Date.now() + 60000))
+    },
+    normalizeDeadlineInput(value) {
+      if (!value) return ''
+      if (/^\d{2}:\d{2}$/.test(value)) return `${this.todayInputDate()}T${value}`
+      return String(value).slice(0, 16)
+    },
+    isPastDeadline(value) {
+      if (!value) return false
+      return this.normalizeDeadlineInput(value) <= this.currentDeadlineInput()
+    },
+    formatDeadline(value) {
+      if (!value) return ''
+      const normalized = this.normalizeDeadlineInput(value)
+      const date = new Date(normalized)
+      if (Number.isNaN(date.getTime())) return value
+      return date.toLocaleString('en-UG', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      })
     },
     async fetchPackages() {
       this.loading    = true
@@ -317,7 +353,7 @@ export default {
             _betslipCode:  norm.betslipCode  || '',
             _isSpecial:    norm.isSpecial    || false,
             _isActive:     norm.isActive     !== false,
-            _deadline:     norm.subscriptionDeadline || '',
+            _deadline:     this.normalizeDeadlineInput(norm.subscriptionDeadline),
             _photoUrl:     norm.photoUrl     || '',
             _clearPhoto:   false,
             _dirty:        false,
@@ -362,8 +398,12 @@ export default {
       pkg._dirty      = true
     },
     async savePackage(pkg) {
-      pkg._saving   = true
       this.saveError = ''
+      if (this.isPastDeadline(pkg._deadline)) {
+        this.saveError = 'Deadline must be a future date and time.'
+        return
+      }
+      pkg._saving   = true
       try {
         const hasPhoto = !!this.pkgPhotoFiles[pkg.id]
         let data
@@ -428,7 +468,7 @@ export default {
         pkg._betslipCode  = data.betslipCode  || ''
         pkg._isSpecial    = data.isSpecial    || false
         pkg._isActive     = data.isActive     !== false
-        pkg._deadline     = data.subscriptionDeadline || ''
+        pkg._deadline     = this.normalizeDeadlineInput(data.subscriptionDeadline)
         pkg._photoUrl     = data.photoUrl     || ''
         pkg._clearPhoto   = false
         pkg._dirty        = false
@@ -573,6 +613,16 @@ export default {
   font-size: 13px;
   outline: none;
 }
+.field-deadline {
+  width: 170px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
 .field-url, .field-code {
   width: 100%;
   min-width: 120px;
@@ -584,7 +634,7 @@ export default {
   font-size: 12px;
   outline: none;
 }
-.field-url:focus, .field-code:focus, .field-sm:focus { border-color: rgba(255,215,0,0.4); }
+.field-url:focus, .field-code:focus, .field-sm:focus, .field-deadline:focus { border-color: rgba(255,215,0,0.4); }
 .field-hint { display: block; font-size: 10px; color: rgba(255,255,255,0.35); margin-top: 3px; }
 
 /* Toggle */
