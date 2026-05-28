@@ -157,15 +157,15 @@ const SUB_SELECT = `
 // GET all subscriptions (admin)
 router.get('/', auth, async (req, res) => {
   try {
-    // Timeout pending subscriptions/payments older than 10 minutes
+    // Timeout pending subscriptions/payments older than 1 hour
     await pool.query(`
       UPDATE payments p SET status = 'failed'
       FROM subscriptions s
       WHERE p.subscription_id = s.id
         AND p.status = 'pending' AND s.status = 'pending'
-        AND s.created_at < NOW() - INTERVAL '10 minutes'
+        AND s.created_at < NOW() - INTERVAL '1 hour'
     `)
-    await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE status = 'pending' AND created_at < NOW() - INTERVAL '10 minutes'`)
+    await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE status = 'pending' AND created_at < NOW() - INTERVAL '1 hour'`)
     await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
     const { rows } = await pool.query(SUB_SELECT + ' ORDER BY s.created_at DESC')
     res.json(rows.map(r => rowToSub(r, true)))
@@ -266,12 +266,12 @@ router.post('/', async (req, res) => {
       WHERE p.subscription_id = s.id
         AND p.status = 'pending' AND s.status = 'pending'
         AND s.user_id = $1 AND s.group_id = $2
-        AND s.created_at < NOW() - INTERVAL '10 minutes'
+        AND s.created_at < NOW() - INTERVAL '1 hour'
     `, [parsedUserId, parsedGroupId])
     await pool.query(`
       UPDATE subscriptions SET status = 'failed'
       WHERE status = 'pending' AND user_id = $1 AND group_id = $2
-        AND created_at < NOW() - INTERVAL '10 minutes'
+        AND created_at < NOW() - INTERVAL '1 hour'
     `, [parsedUserId, parsedGroupId])
 
     // Block rapid retries: reject if a pending record was created in the last 3 minutes
