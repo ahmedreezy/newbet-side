@@ -114,6 +114,15 @@ const SUB_SELECT = `
 // GET all subscriptions (admin)
 router.get('/', auth, async (req, res) => {
   try {
+    // Timeout pending subscriptions/payments older than 10 minutes
+    await pool.query(`
+      UPDATE payments p SET status = 'failed'
+      FROM subscriptions s
+      WHERE p.subscription_id = s.id
+        AND p.status = 'pending' AND s.status = 'pending'
+        AND s.created_at < NOW() - INTERVAL '10 minutes'
+    `)
+    await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE status = 'pending' AND created_at < NOW() - INTERVAL '10 minutes'`)
     await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
     const { rows } = await pool.query(SUB_SELECT + ' ORDER BY s.created_at DESC')
     res.json(rows.map(r => rowToSub(r, true)))
@@ -188,6 +197,34 @@ router.post('/', async (req, res) => {
     const { rows: userRows } = await pool.query('SELECT id FROM users WHERE id = $1', [parsedUserId])
     if (userRows.length === 0)
       return res.status(400).json({ error: 'User not found' })
+
+    // Fail stale pending records for this user+group before checking for duplicates
+    await pool.query(`
+      UPDATE payments p SET status = 'failed'
+      FROM subscriptions s
+      WHERE p.subscription_id = s.id
+        AND p.status = 'pending' AND s.status = 'pending'
+        AND s.user_id = $1 AND s.group_id = $2
+        AND s.created_at < NOW() - INTERVAL '10 minutes'
+    `, [parsedUserId, parsedGroupId])
+    await pool.query(`
+      UPDATE subscriptions SET status = 'failed'
+      WHERE status = 'pending' AND user_id = $1 AND group_id = $2
+        AND created_at < NOW() - INTERVAL '10 minutes'
+    `, [parsedUserId, parsedGroupId])
+
+    // Block rapid retries: reject if a pending record was created in the last 3 minutes
+    const { rows: dupRows } = await pool.query(`
+      SELECT id FROM subscriptions
+      WHERE user_id = $1 AND group_id = $2 AND status = 'pending'
+        AND created_at >= NOW() - INTERVAL '3 minutes'
+      LIMIT 1
+    `, [parsedUserId, parsedGroupId])
+    if (dupRows.length > 0) {
+      return res.status(409).json({
+        error: 'A payment is already in progress for this package. Approve the prompt or wait before retrying.'
+      })
+    }
 
     // Use special_price when applicable
     const effectiveAmount = (group.is_special && group.special_price)
