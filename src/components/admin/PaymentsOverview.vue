@@ -172,7 +172,33 @@
           </div>
         </div>
 
-        <button v-if="s.status !== 'pending'" class="icon-del" @click="deleteSub(s.id)" title="Remove">Remove</button>
+        <!-- Admin edit panel (available on all statuses) -->
+        <div v-if="editing[s.id]" class="edit-panel">
+          <div class="edit-row">
+            <label class="edit-label">Set Status</label>
+            <select v-model="editStatus[s.id]" class="edit-select">
+              <option value="success">&#10003; Confirm as Paid (Activate)</option>
+              <option value="failed">&#10007; Mark as Failed / Revoke</option>
+            </select>
+          </div>
+          <div v-if="editStatus[s.id] === 'success'" class="edit-row">
+            <label class="edit-label">Transaction ID <span class="edit-optional">(optional)</span></label>
+            <input v-model="editTxnId[s.id]" type="text" class="edit-input" placeholder="e.g. MP123456789" />
+          </div>
+          <div class="edit-actions">
+            <button class="edit-save-btn" @click="saveEdit(s)" :disabled="editSaving[s.id]">
+              {{ editSaving[s.id] ? 'Saving\u2026' : 'Apply Change' }}
+            </button>
+            <button class="edit-cancel-btn" @click="editing = { ...editing, [s.id]: false }">Cancel</button>
+          </div>
+        </div>
+
+        <div class="card-footer-row">
+          <button class="edit-toggle-btn" @click="toggleEdit(s)">
+            {{ editing[s.id] ? '\u2715 Cancel Edit' : '\u270E Edit Payment' }}
+          </button>
+          <button v-if="s.status !== 'pending'" class="icon-del" @click="deleteSub(s.id)" title="Remove">Remove</button>
+        </div>
       </div>
     </div>
 
@@ -270,6 +296,10 @@ export default {
       groupsError: '',
       specialResetting: {},
       reconciling: {},
+      editing:     {},
+      editStatus:  {},
+      editTxnId:   {},
+      editSaving:  {},
       reportLoading: false,
       reportError: '',
       reportRange: {
@@ -570,6 +600,39 @@ export default {
         this.reconciling = { ...this.reconciling, [sub.id]: false }
       }
     },
+    toggleEdit(sub) {
+      const open = !this.editing[sub.id]
+      this.editing    = { ...this.editing,    [sub.id]: open }
+      this.editStatus = { ...this.editStatus, [sub.id]: 'success' }
+      this.editTxnId  = { ...this.editTxnId,  [sub.id]: sub.transactionId || '' }
+    },
+    async saveEdit(sub) {
+      const status = this.editStatus[sub.id]
+      if (!status) return
+      const actionLabel = status === 'success'
+        ? 'confirm this payment as paid (activate)'
+        : 'mark this payment as failed / revoke access'
+      if (!confirm('Are you sure you want to ' + actionLabel + '?')) return
+
+      this.editSaving = { ...this.editSaving, [sub.id]: true }
+      try {
+        const payload = {
+          subscriptionId: sub.id,
+          reference: sub.paymentReference,
+          status,
+          transactionId: this.editTxnId[sub.id] || null,
+          force: true,
+        }
+        const { data } = await adminApi.post('/api/payments/reconcile', payload)
+        if (data?.subscription) this.updateSub(sub.id, data.subscription)
+        this.editing = { ...this.editing, [sub.id]: false }
+        await this.fetchReport()
+      } catch {
+        alert('Could not apply change. Please try again.')
+      } finally {
+        this.editSaving = { ...this.editSaving, [sub.id]: false }
+      }
+    },
     async deleteSub(id) {
       if (!confirm('Delete this subscription record?')) return
       try {
@@ -731,8 +794,7 @@ export default {
 .reject-confirm-btn:disabled { opacity: 0.5; }
 .reject-cancel-btn { padding: 9px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 8px; font-size: 13px; cursor: pointer; }
 
-.icon-del { position: absolute; top: 14px; right: 16px; background: rgba(255,82,82,0.08); border: 1px solid rgba(255,82,82,0.18); border-radius: 8px; color: #ff7070; padding: 5px 9px; font-size: 11px; font-weight: 800; cursor: pointer; opacity: 0.72; transition: opacity 0.2s, background 0.2s; }
-.icon-del:hover { opacity: 1; background: rgba(255,82,82,0.16); }
+.icon-del-old-placeholder { display: none; /* superseded by card-footer-row .icon-del */ }
 
 /* Payment reference */
 .payment-ref-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -813,4 +875,26 @@ export default {
 .pkg-2   { color: var(--gold, #FFD700); }
 .pkg-5   { color: #ff7043; }
 .cfg-field-full { grid-column: 1 / -1; }
+
+/* Card footer row (edit + delete side by side) */
+.card-footer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.edit-toggle-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(100,149,237,0.35); background: rgba(100,149,237,0.07); color: #6495ed; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.edit-toggle-btn:hover { background: rgba(100,149,237,0.14); border-color: rgba(100,149,237,0.55); }
+.icon-del { position: static; background: rgba(255,82,82,0.08); border: 1px solid rgba(255,82,82,0.18); border-radius: 8px; color: #ff7070; padding: 5px 9px; font-size: 11px; font-weight: 800; cursor: pointer; opacity: 0.72; transition: opacity 0.2s, background 0.2s; margin-left: auto; }
+.icon-del:hover { opacity: 1; background: rgba(255,82,82,0.16); }
+
+/* Edit panel */
+.edit-panel { background: rgba(100,149,237,0.06); border: 1px solid rgba(100,149,237,0.22); border-radius: 10px; padding: 14px 16px; margin-top: 12px; }
+.edit-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.edit-label { font-size: 10px; font-weight: 700; color: #9ab3e8; letter-spacing: 1px; text-transform: uppercase; }
+.edit-optional { font-size: 10px; color: #666; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.edit-select { background: #1a1a1a; border: 1px solid rgba(100,149,237,0.3); border-radius: 8px; color: #ddd; font-size: 13px; padding: 9px 12px; outline: none; width: 100%; cursor: pointer; }
+.edit-select:focus { border-color: rgba(100,149,237,0.6); }
+.edit-input { background: #1a1a1a; border: 1px solid rgba(100,149,237,0.25); border-radius: 8px; color: #fff; font-size: 13px; padding: 9px 12px; outline: none; width: 100%; box-sizing: border-box; }
+.edit-input:focus { border-color: rgba(100,149,237,0.55); }
+.edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+.edit-save-btn { flex: 1; padding: 9px; background: linear-gradient(135deg, #3a7bd5, #6495ed); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+.edit-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.edit-cancel-btn { padding: 9px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.edit-cancel-btn:hover { background: rgba(255,255,255,0.09); }
 </style>
