@@ -24,7 +24,7 @@
 
     <PhotoLightbox />
 
-    <footer class="powered-footnote">
+    <footer v-if="!isAdminRoute" class="powered-footnote">
       Powered by Dape Technologies
       <span class="powered-phones">
         <a
@@ -83,7 +83,10 @@ export default {
   },
   computed: {
     isAdminRoute() {
-      return this.$route && this.$route.path.startsWith('/admin')
+      return this.$route && (
+        this.$route.path.startsWith('/admin') ||
+        this.$route.path.startsWith('/dev')
+      )
     },
     isLight() {
       if (this.themeMode === 'system') return this.systemIsLight

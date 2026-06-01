@@ -73,6 +73,10 @@ export default {
           username: this.username,
           password: this.password
         })
+        if ((data.admin?.role ?? 'owner') === 'developer') {
+          this.error = 'This portal is for the owner account. Developer login is at /dev/login.'
+          return
+        }
         localStorage.setItem('adminToken', data.token)
         this.$router.push('/admin/dashboard')
       } catch (err) {
