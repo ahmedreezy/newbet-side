@@ -2,7 +2,7 @@
   <div class="dev-login-page">
     <div class="dev-login-card">
       <div class="dev-logo">
-        <span class="dev-mark">AX</span>
+        <img class="dev-mark" src="@/assets/almax-mark.png" alt="Almax logo" />
         <div class="dev-wordmark">
           <span class="dev-name">ALMAX</span>
           <span class="dev-sub">DEVELOPER ACCESS</span>
@@ -130,17 +130,11 @@ export default {
 }
 
 .dev-mark {
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
-  color: #0a0e1a;
-  font-size: 18px;
-  font-weight: 900;
   width: 44px;
   height: 44px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: -1px;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
   flex-shrink: 0;
 }
 

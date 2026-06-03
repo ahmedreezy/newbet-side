@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-card">
       <div class="login-logo">
-        <span class="logo-icon">AX</span>
+        <img class="logo-icon" src="@/assets/almax-mark.png" alt="Almax logo" />
         <span class="logo-text">ALMAX<span>ADMIN</span></span>
       </div>
       <h2 class="login-title">Control Portal</h2>
@@ -136,16 +136,11 @@ export default {
   margin-bottom: 28px;
 }
 .logo-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #FFD700, #B8860B);
-  color: #050505;
-  font-size: 13px;
-  font-weight: 900;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,0.28));
 }
 .logo-text {
   display: flex;

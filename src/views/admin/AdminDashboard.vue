@@ -3,7 +3,7 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <span class="brand-mark">AX</span>
+        <img class="brand-mark" src="@/assets/almax-mark.png" alt="Almax logo" />
         <span class="logo-text">ALMAX<span>CONTROL</span></span>
       </div>
       <p class="sidebar-role">Administration Suite</p>
@@ -262,17 +262,11 @@ export default {
   margin-bottom: 14px;
 }
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 42px;
   height: 42px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #FFD700, #B8860B);
-  color: #050505;
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.5px;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,0.25));
 }
 .logo-text {
   display: flex;
