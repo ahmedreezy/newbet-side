@@ -3,7 +3,7 @@
     <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
     <aside class="d-sidebar">
       <div class="d-logo">
-        <span class="d-mark">AX</span>
+        <img class="d-mark" src="@/assets/almax-mark.png" alt="Almax logo" />
         <div>
           <div class="d-brand">ALMAX</div>
           <div class="d-brand-sub">DEV CONSOLE</div>
@@ -658,16 +658,11 @@ export default {
 }
 
 .d-mark {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #0a0e1a;
-  font-size: 14px;
-  font-weight: 900;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.25));
   flex-shrink: 0;
 }
 

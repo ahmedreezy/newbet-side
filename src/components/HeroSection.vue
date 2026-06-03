@@ -12,6 +12,7 @@
 
     <!-- Main content -->
     <div class="hero-content">
+      <img class="hero-logo" src="@/assets/almax-logo.png" alt="Almax Football Prediction logo" />
       <div class="hero-badge">🏆 ALMAX FOOTBALL PREDICTIONS</div>
       <div class="glow-wrapper">
         <figure class="glow-figure">
@@ -138,6 +139,13 @@ export default {
   z-index: 2;
   max-width: 700px;
 }
+.hero-logo {
+  display: block;
+  width: clamp(136px, 24vw, 230px);
+  height: auto;
+  margin: 0 auto 18px;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.42)) drop-shadow(0 0 18px rgba(255, 215, 0, 0.16));
+}
 .hero-badge {
   display: inline-block;
   border: 1px solid var(--gold);
@@ -251,6 +259,7 @@ export default {
 /* Floating cards removed */
 
 @media (max-width: 600px) {
+  .hero-logo { width: clamp(124px, 46vw, 190px); }
   .hero-stats { gap: 14px; }
 }
 
