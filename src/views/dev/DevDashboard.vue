@@ -86,7 +86,7 @@
             <div class="kpi-card kpi-gold">
               <p class="kpi-label">Commission Earned</p>
               <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
-              <p class="kpi-sub">Rate: {{ (c.ratio * 100).toFixed(0) }}% per payment</p>
+              <p class="kpi-sub">Tracked cut: {{ (c.ratio * 100).toFixed(1) }}%</p>
             </div>
             <div class="kpi-card kpi-teal">
               <p class="kpi-label">Commission Paid Out</p>
@@ -269,7 +269,7 @@
                   </span>
                 </p>
                 <p class="comm-banner-sub">
-                  <template v-if="c.enabled">Active — 10% is being collected on every confirmed payment and tracked here.</template>
+                  <template v-if="c.enabled">Active - 10% commission is tracked only after payment confirmation.</template>
                   <template v-else>Disabled — set <code>JPESA_AGENT_COMMISSION_ENABLED=true</code> in .env to activate.</template>
                 </p>
               </div>
@@ -304,9 +304,9 @@
               <p class="kpi-sub">{{ formatNum(c.by_status?.processing?.count ?? 0) }} transfers</p>
             </div>
             <div class="kpi-card kpi-warn">
-              <p class="kpi-label">Pending / Failed</p>
-              <p class="kpi-value kpi-value--md">{{ formatUGX((c.by_status?.pending?.amount ?? 0) + (c.by_status?.failed?.amount ?? 0)) }}</p>
-              <p class="kpi-sub">{{ formatNum((c.by_status?.pending?.count ?? 0) + (c.by_status?.failed?.count ?? 0)) }} entries</p>
+              <p class="kpi-label">Pending Cut</p>
+              <p class="kpi-value kpi-value--md">{{ formatUGX(c.by_status?.pending?.amount ?? 0) }}</p>
+              <p class="kpi-sub">{{ formatNum(c.by_status?.pending?.count ?? 0) }} entries</p>
             </div>
           </div>
 
@@ -355,7 +355,7 @@
                     <th>Plan</th>
                     <th>Method</th>
                     <th>Payment</th>
-                    <th>Commission ({{ (c.ratio * 100).toFixed(0) }}%)</th>
+                    <th>Commission (10%)</th>
                     <th>Status</th>
                   </tr>
                 </thead>

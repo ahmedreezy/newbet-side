@@ -9,10 +9,8 @@
         :style="icon.style"
       >{{ icon.char }}</span>
     </div>
-
     <!-- Main content -->
     <div class="hero-content">
-      <img class="hero-logo" src="@/assets/almax-logo.png" alt="Almax Football Prediction logo" />
       <div class="hero-badge">🏆 ALMAX FOOTBALL PREDICTIONS</div>
       <div class="glow-wrapper">
         <figure class="glow-figure">
@@ -112,15 +110,20 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   position: relative;
   overflow: hidden;
-  padding: 100px 20px 48px;
+  padding: clamp(82px, 9vh, 112px) 20px 48px;
   text-align: center;
 }
 
 /* Background floating icons */
-.bg-icons { position: absolute; inset: 0; pointer-events: none; }
+.bg-icons {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
 .bg-icon {
   position: absolute;
   opacity: 0.55;
@@ -138,13 +141,6 @@ export default {
   position: relative;
   z-index: 2;
   max-width: 700px;
-}
-.hero-logo {
-  display: block;
-  width: clamp(136px, 24vw, 230px);
-  height: auto;
-  margin: 0 auto 18px;
-  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.42)) drop-shadow(0 0 18px rgba(255, 215, 0, 0.16));
 }
 .hero-badge {
   display: inline-block;
@@ -259,7 +255,6 @@ export default {
 /* Floating cards removed */
 
 @media (max-width: 600px) {
-  .hero-logo { width: clamp(124px, 46vw, 190px); }
   .hero-stats { gap: 14px; }
 }
 

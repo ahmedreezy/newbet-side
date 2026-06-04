@@ -9,6 +9,7 @@ async function migrate() {
         id            SERIAL PRIMARY KEY,
         username      VARCHAR(100) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
+        role          VARCHAR(20)  NOT NULL DEFAULT 'owner',
         created_at    TIMESTAMPTZ DEFAULT NOW()
       );
 
@@ -17,6 +18,9 @@ async function migrate() {
         username      VARCHAR(200) NOT NULL,
         phone         VARCHAR(30) UNIQUE NOT NULL,
         password_hash VARCHAR(255),
+        scam_warning  BOOLEAN NOT NULL DEFAULT FALSE,
+        blacklisted   BOOLEAN NOT NULL DEFAULT FALSE,
+        blacklisted_at TIMESTAMPTZ,
         created_at    TIMESTAMPTZ DEFAULT NOW()
       );
 
@@ -48,6 +52,9 @@ async function migrate() {
         payment_method  VARCHAR(20),
         phone           VARCHAR(30) DEFAULT '',
         status          VARCHAR(20) DEFAULT 'pending',
+        agent_commission_amount NUMERIC(12,2),
+        agent_commission_status VARCHAR(20),
+        agent_commission_tracked_at TIMESTAMPTZ,
         created_at      TIMESTAMPTZ DEFAULT NOW()
       );
 
@@ -132,8 +139,12 @@ async function migrate() {
 
     // Column additions for schema evolution — safe to run on existing DBs
     await client.query(`
+      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'owner';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash          VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer_hash  VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS scam_warning          BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS blacklisted           BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS blacklisted_at        TIMESTAMPTZ;
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_link     VARCHAR(500) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS betslip_code     VARCHAR(100) DEFAULT '';
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
@@ -146,6 +157,15 @@ async function migrate() {
       ALTER TABLE free_odd2      ADD COLUMN IF NOT EXISTS caption        TEXT         DEFAULT '';
       ALTER TABLE football_tips  ADD COLUMN IF NOT EXISTS caption        TEXT         DEFAULT '';
       ALTER TABLE football_tips  ADD COLUMN IF NOT EXISTS image_url      VARCHAR(500) DEFAULT '';
+    `)
+    await client.query(`
+      UPDATE admin_users
+      SET role = 'owner'
+      WHERE role IS NULL OR role = '';
+
+      UPDATE admin_users
+      SET role = 'developer'
+      WHERE LOWER(username) IN ('almaxdev', 'developer', 'dev');
     `)
     console.log('✓ Core column migrations applied.')
 
@@ -197,6 +217,9 @@ async function migrate() {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
       ALTER TABLE payments      ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);
       ALTER TABLE payments      ADD COLUMN IF NOT EXISTS transaction_id    VARCHAR(200);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS agent_commission_amount NUMERIC(12,2);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS agent_commission_status VARCHAR(20);
+      ALTER TABLE payments      ADD COLUMN IF NOT EXISTS agent_commission_tracked_at TIMESTAMPTZ;
     `)
     console.log('✓ Migration complete — all tables and columns up to date.')
   } finally {

@@ -48,6 +48,7 @@ function buildPool () {
       is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
       special_price NUMERIC(12,2),
       special_odds  VARCHAR(50),
+      subscription_deadline VARCHAR(16),
       created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
       updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
     )
@@ -285,6 +286,45 @@ describe('PATCH /api/groups/:id — admin update', () => {
     const pub = await request.get('/api/groups')
     const found = pub.body.find(g => g.isSpecial)
     expect(found).toBeUndefined()
+  })
+
+  test('admin can deactivate a package after its deadline has passed', async () => {
+    await global.__groupTestPool.query(
+      `UPDATE groups SET is_active = true, subscription_deadline = '2000-01-01T12:00' WHERE id = $1`,
+      [weeklyOdd5Id]
+    )
+
+    const res = await request.patch(`/api/groups/${weeklyOdd5Id}`)
+      .set(authHeader())
+      .send({ isActive: false })
+
+    expect(res.status).toBe(200)
+    expect(res.body.isActive).toBe(false)
+    expect(res.body.subscriptionDeadline).toBe('2000-01-01T12:00')
+
+    await global.__groupTestPool.query(
+      `UPDATE groups SET is_active = true, subscription_deadline = NULL WHERE id = $1`,
+      [weeklyOdd5Id]
+    )
+  })
+
+  test('admin cannot activate a package with a past deadline', async () => {
+    await global.__groupTestPool.query(
+      `UPDATE groups SET is_active = false, subscription_deadline = '2000-01-01T12:00' WHERE id = $1`,
+      [weeklyOdd5Id]
+    )
+
+    const res = await request.patch(`/api/groups/${weeklyOdd5Id}`)
+      .set(authHeader())
+      .send({ isActive: true })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/past deadlines/)
+
+    await global.__groupTestPool.query(
+      `UPDATE groups SET is_active = true, subscription_deadline = NULL WHERE id = $1`,
+      [weeklyOdd5Id]
+    )
   })
 
   test('admin can update betslip link and code', async () => {
