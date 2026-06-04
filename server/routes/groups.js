@@ -36,6 +36,21 @@ function isPastOrCurrentDeadline(value) {
   return !!deadline && kampalaNowInput() >= deadline
 }
 
+function toBoolean(value) {
+  if (value === undefined) return undefined
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false
+  return Boolean(value)
+}
+
+function requireAdmin(req, res, next) {
+  if (req.admin?.role === 'user') return res.status(403).json({ error: 'Forbidden' })
+  next()
+}
+
 function formatGroup(g) {
   return {
     id:                   g.id,
@@ -72,7 +87,7 @@ router.get('/', async (_req, res) => {
 })
 
 // GET all groups including hidden special ones (admin only)
-router.get('/admin', auth, async (_req, res) => {
+router.get('/admin', auth, requireAdmin, async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM groups ORDER BY price ASC')
     res.json(rows.map(formatGroup))
@@ -83,7 +98,7 @@ router.get('/admin', auth, async (_req, res) => {
 })
 
 // PATCH update a group (admin)
-router.patch('/:id', auth, async (req, res) => {
+router.patch('/:id', auth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' })
 
@@ -97,16 +112,16 @@ router.patch('/:id', auth, async (req, res) => {
   const specialPrice = body.specialPrice ?? body.special_price
   const specialOdds = body.specialOdds ?? body.special_odds
   const subscriptionDeadline = body.subscriptionDeadline ?? body.subscription_deadline
-  if (subscriptionDeadline && isPastOrCurrentDeadline(subscriptionDeadline)) {
-    return res.status(400).json({ error: 'Deadline must be a future date and time.' })
-  }
+  const parsedIsActive = toBoolean(isActive)
+  const parsedIsSpecial = toBoolean(isSpecial)
+
   const sets = []; const vals = []; let i = 1
   if (name         !== undefined) { sets.push(`name = $${i++}`);          vals.push(name) }
   if (price        !== undefined) { sets.push(`price = $${i++}`);         vals.push(parseFloat(price)) }
   if (betslipLink  !== undefined) { sets.push(`betslip_link = $${i++}`);  vals.push(betslipLink) }
   if (betslipCode  !== undefined) { sets.push(`betslip_code = $${i++}`);  vals.push(betslipCode) }
-  if (isActive     !== undefined) { sets.push(`is_active = $${i++}`);     vals.push(Boolean(isActive)) }
-  if (isSpecial    !== undefined) { sets.push(`is_special = $${i++}`);    vals.push(Boolean(isSpecial)) }
+  if (isActive     !== undefined) { sets.push(`is_active = $${i++}`);     vals.push(parsedIsActive) }
+  if (isSpecial    !== undefined) { sets.push(`is_special = $${i++}`);    vals.push(parsedIsSpecial) }
   if (specialPrice !== undefined) { sets.push(`special_price = $${i++}`); vals.push(specialPrice !== null && specialPrice !== '' ? parseFloat(specialPrice) : null) }
   if (specialOdds  !== undefined) { sets.push(`special_odds = $${i++}`);  vals.push(specialOdds !== null && specialOdds !== '' ? String(specialOdds) : null) }
   if (subscriptionDeadline !== undefined) { sets.push(`subscription_deadline = $${i++}`); vals.push(subscriptionDeadline || null) }
@@ -115,6 +130,19 @@ router.patch('/:id', auth, async (req, res) => {
   if (sets.length === 1) return res.status(400).json({ error: 'No fields to update' })
 
   try {
+    const { rows: currentRows } = await pool.query('SELECT * FROM groups WHERE id = $1', [id])
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Group not found' })
+
+    const current = currentRows[0]
+    const nextActive = parsedIsActive !== undefined ? parsedIsActive : current.is_active !== false
+    const nextDeadline = subscriptionDeadline !== undefined
+      ? (subscriptionDeadline || null)
+      : current.subscription_deadline
+
+    if (nextActive && isPastOrCurrentDeadline(nextDeadline)) {
+      return res.status(400).json({ error: 'Packages with past deadlines cannot be activated. Set a future deadline first.' })
+    }
+
     vals.push(id)
     const { rows } = await pool.query(
       `UPDATE groups SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals
@@ -128,7 +156,7 @@ router.patch('/:id', auth, async (req, res) => {
 })
 
 // POST create a new group (admin)
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireAdmin, async (req, res) => {
   const body = req.body || {}
   const name = body.name
   const oddsType = body.oddsType ?? body.odds_type
@@ -154,9 +182,9 @@ router.post('/', auth, async (req, res) => {
       parseFloat(price),
       betslipLink  || '',
       betslipCode  || '',
-      Boolean(isSpecial),
-      isActive !== false,
-      (isSpecial && specialPrice != null && specialPrice !== '') ? parseFloat(specialPrice) : null
+      toBoolean(isSpecial) === true,
+      isActive === undefined ? true : toBoolean(isActive),
+      (toBoolean(isSpecial) === true && specialPrice != null && specialPrice !== '') ? parseFloat(specialPrice) : null
     ])
     res.status(201).json(formatGroup(rows[0]))
   } catch (err) {
@@ -167,7 +195,7 @@ router.post('/', auth, async (req, res) => {
 })
 
 // DELETE a group (admin)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' })
   const client = await pool.connect()
