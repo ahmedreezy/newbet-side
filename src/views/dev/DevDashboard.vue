@@ -357,6 +357,7 @@
                     <th>Payment</th>
                     <th>Commission (10%)</th>
                     <th>Status</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -371,10 +372,31 @@
                       <span :class="['status-badge', statusClass(row.agent_commission_status)]">
                         {{ statusLabel(row.agent_commission_status) }}
                       </span>
+                      <p v-if="row.agent_commission_error" class="commission-error" :title="row.agent_commission_error">
+                        {{ row.agent_commission_error }}
+                      </p>
+                    </td>
+                    <td class="td-action">
+                      <button
+                        v-if="canRetryCommission(row)"
+                        class="retry-commission-btn"
+                        @click="retryCommission(row)"
+                        :disabled="retryingCommission[row.id]"
+                        :title="commissionRetryTitle(row)"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="23 4 23 10 17 10"></polyline>
+                          <polyline points="1 20 1 14 7 14"></polyline>
+                          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10"></path>
+                          <path d="M20.49 15a9 9 0 01-14.85 3.36L1 14"></path>
+                        </svg>
+                        <span>{{ retryingCommission[row.id] ? 'Retrying' : 'Retry' }}</span>
+                      </button>
+                      <span v-else class="action-muted">-</span>
                     </td>
                   </tr>
                   <tr v-if="!c.recent || !c.recent.length">
-                    <td colspan="7" class="td-empty">
+                    <td colspan="8" class="td-empty">
                       <template v-if="c.enabled">Commission is live — records will appear here as payments are confirmed.</template>
                       <template v-else>Commission is disabled. Set <code>JPESA_AGENT_COMMISSION_ENABLED=true</code> to start tracking.</template>
                     </td>
@@ -486,6 +508,7 @@ export default {
       loading: true,
       error: '',
       analytics: null,
+      retryingCommission: {},
       todayDate: d.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
       navItems: [
         {
@@ -621,6 +644,38 @@ export default {
         failed:     'Failed'
       }
       return map[status] || (status ? status : 'Queued')
+    },
+    canRetryCommission(row) {
+      if (!this.c.enabled || !row) return false
+      const status = String(row.agent_commission_status || '').toLowerCase()
+      return status === 'failed' || status === 'pending'
+    },
+    commissionRetryTitle(row) {
+      if (row?.agent_commission_error) {
+        return 'Retry commission payment: ' + row.agent_commission_error
+      }
+      return 'Retry commission payment'
+    },
+    async retryCommission(row) {
+      if (!this.canRetryCommission(row) || this.retryingCommission[row.id]) return
+      if (!confirm('Retry commission payment for payment #' + row.id + '?')) return
+
+      this.retryingCommission = { ...this.retryingCommission, [row.id]: true }
+      try {
+        const { data } = await devApi.post('/api/analytics/developer/payments/' + row.id + '/retry-commission')
+        await this.fetchAnalytics()
+
+        if (data && data.success === false) {
+          alert(data.message || 'Commission retry did not complete.')
+        }
+      } catch (err) {
+        const message = err.response?.data?.message
+          || err.response?.data?.error
+          || 'Commission retry failed. Please try again.'
+        alert(message)
+      } finally {
+        this.retryingCommission = { ...this.retryingCommission, [row.id]: false }
+      }
     }
   }
 }
@@ -1298,6 +1353,7 @@ export default {
 .td-method  { font-weight: 600; color: #3b82f6; }
 .td-amount  { font-weight: 700; color: #e5e7eb; text-align: right; }
 .td-commission { font-weight: 800; color: #f59e0b; text-align: right; }
+.td-action  { text-align: right; white-space: nowrap; }
 .td-empty   { text-align: center; color: #374151; padding: 24px; font-size: 12px; }
 
 code {
@@ -1332,6 +1388,55 @@ code {
 .st-pend { background: rgba(245,158,11,0.12);  color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
 .st-fail { background: rgba(239,68,68,0.12);   color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
 .st-none { background: rgba(107,114,128,0.12); color: #6b7280; border: 1px solid rgba(107,114,128,0.2); }
+
+.commission-error {
+  max-width: 230px;
+  margin: 6px 0 0;
+  color: #ef4444;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retry-commission-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 72px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(245,158,11,0.32);
+  border-radius: 6px;
+  background: rgba(245,158,11,0.12);
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.retry-commission-btn svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.retry-commission-btn:hover {
+  background: rgba(245,158,11,0.2);
+  border-color: rgba(245,158,11,0.48);
+}
+
+.retry-commission-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.action-muted {
+  color: #374151;
+  font-size: 12px;
+}
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
