@@ -84,14 +84,14 @@
               <p class="kpi-sub">{{ formatUGX(f.revenue_this_week) }} this week</p>
             </div>
             <div class="kpi-card kpi-gold">
-              <p class="kpi-label">Commission Earned</p>
-              <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
-              <p class="kpi-sub">Tracked cut: {{ (c.ratio * 100).toFixed(1) }}%</p>
+              <p class="kpi-label">Available Commission</p>
+              <p class="kpi-value">{{ formatUGX(currentCommission) }}</p>
+              <p class="kpi-sub">{{ formatUGX(c.total_withdrawn) }} withdrawn</p>
             </div>
             <div class="kpi-card kpi-teal">
-              <p class="kpi-label">Commission Paid Out</p>
-              <p class="kpi-value">{{ formatUGX(c.total_paid) }}</p>
-              <p class="kpi-sub">{{ formatUGX(c.outstanding) }} outstanding</p>
+              <p class="kpi-label">Overall Commission</p>
+              <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
+              <p class="kpi-sub">{{ formatUGX(c.wallet_received ?? c.total_paid) }} sent to JPESA</p>
             </div>
           </div>
 
@@ -269,7 +269,7 @@
                   </span>
                 </p>
                 <p class="comm-banner-sub">
-                  <template v-if="c.enabled">Active - 10% commission is tracked only after payment confirmation.</template>
+                  <template v-if="c.enabled">Active - available balance is reduced by recorded JPESA withdrawals.</template>
                   <template v-else>Disabled — set <code>JPESA_AGENT_COMMISSION_ENABLED=true</code> in .env to activate.</template>
                 </p>
               </div>
@@ -280,8 +280,12 @@
                 <span class="comm-stat-val">{{ (c.ratio * 100).toFixed(1) }}%</span>
               </div>
               <div class="comm-stat">
-                <span class="comm-stat-label">Outstanding</span>
-                <span class="comm-stat-val" :class="c.outstanding > 0 ? 'text-gold' : ''">{{ formatUGX(c.outstanding) }}</span>
+                <span class="comm-stat-label">Available</span>
+                <span class="comm-stat-val" :class="currentCommission > 0 ? 'text-gold' : ''">{{ formatUGX(currentCommission) }}</span>
+              </div>
+              <div class="comm-stat">
+                <span class="comm-stat-label">Overall</span>
+                <span class="comm-stat-val">{{ formatUGX(c.total_earned) }}</span>
               </div>
             </div>
           </div>
@@ -289,24 +293,90 @@
           <!-- Commission KPI cards -->
           <div class="kpi-grid" style="margin-top:20px">
             <div class="kpi-card kpi-gold">
-              <p class="kpi-label">Total Earned</p>
+              <p class="kpi-label">Total Overall</p>
               <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
               <p class="kpi-sub">All time commission</p>
             </div>
             <div class="kpi-card kpi-green">
-              <p class="kpi-label">Paid to Wallet</p>
-              <p class="kpi-value">{{ formatUGX(c.total_paid) }}</p>
-              <p class="kpi-sub">{{ formatNum(c.by_status?.completed?.count ?? 0) }} transfers completed</p>
+              <p class="kpi-label">Available Now</p>
+              <p class="kpi-value">{{ formatUGX(currentCommission) }}</p>
+              <p class="kpi-sub">After JPESA withdrawals</p>
             </div>
             <div class="kpi-card kpi-blue">
-              <p class="kpi-label">In Progress</p>
-              <p class="kpi-value kpi-value--md">{{ formatUGX(c.by_status?.processing?.amount ?? 0) }}</p>
-              <p class="kpi-sub">{{ formatNum(c.by_status?.processing?.count ?? 0) }} transfers</p>
+              <p class="kpi-label">Withdrawn</p>
+              <p class="kpi-value kpi-value--md">{{ formatUGX(c.total_withdrawn) }}</p>
+              <p class="kpi-sub">{{ formatNum(c.withdrawals?.length ?? 0) }} recent records</p>
             </div>
             <div class="kpi-card kpi-warn">
-              <p class="kpi-label">Pending Cut</p>
-              <p class="kpi-value kpi-value--md">{{ formatUGX(c.by_status?.pending?.amount ?? 0) }}</p>
-              <p class="kpi-sub">{{ formatNum(c.by_status?.pending?.count ?? 0) }} entries</p>
+              <p class="kpi-label">Sent to JPESA</p>
+              <p class="kpi-value kpi-value--md">{{ formatUGX(c.wallet_received ?? c.total_paid) }}</p>
+              <p class="kpi-sub">{{ formatNum(c.by_status?.completed?.count ?? 0) }} transfers completed</p>
+            </div>
+          </div>
+
+          <div class="section-card withdrawal-card" style="margin-top:24px">
+            <div class="withdrawal-head">
+              <div>
+                <p class="section-card-title">JPESA Withdrawals</p>
+                <p class="section-card-sub">{{ c.wallet_account || 'JPESA wallet' }}</p>
+              </div>
+              <button
+                type="button"
+                class="withdrawal-secondary"
+                @click="fillWithdrawalBalance"
+                :disabled="!currentCommission || withdrawalSaving"
+              >
+                Full Balance
+              </button>
+            </div>
+
+            <form class="withdrawal-form" @submit.prevent="recordCommissionWithdrawal">
+              <label class="withdrawal-field">
+                <span>Amount</span>
+                <input
+                  v-model="withdrawalForm.amount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  :max="currentCommission || null"
+                  placeholder="UGX"
+                  required
+                />
+              </label>
+              <label class="withdrawal-field">
+                <span>Date</span>
+                <input
+                  v-model="withdrawalForm.withdrawn_at"
+                  type="date"
+                  :max="todayInputDate"
+                />
+              </label>
+              <label class="withdrawal-field withdrawal-field--wide">
+                <span>Reference</span>
+                <input
+                  v-model.trim="withdrawalForm.reference"
+                  type="text"
+                  maxlength="200"
+                  placeholder="JPESA ref"
+                />
+              </label>
+              <button
+                type="submit"
+                class="withdrawal-submit"
+                :disabled="withdrawalSaving || !Number(withdrawalForm.amount)"
+              >
+                {{ withdrawalSaving ? 'Recording' : 'Record Withdrawal' }}
+              </button>
+            </form>
+
+            <p v-if="withdrawalError" class="withdrawal-error">{{ withdrawalError }}</p>
+
+            <div v-if="c.withdrawals && c.withdrawals.length" class="withdrawal-list">
+              <div v-for="item in c.withdrawals" :key="item.id" class="withdrawal-row">
+                <span class="withdrawal-date">{{ fmtDate(item.withdrawn_at) }}</span>
+                <span class="withdrawal-ref">{{ item.reference || 'Withdrawal' }}</span>
+                <span class="withdrawal-amount">{{ formatUGX(item.amount) }}</span>
+              </div>
             </div>
           </div>
 
@@ -509,6 +579,13 @@ export default {
       error: '',
       analytics: null,
       retryingCommission: {},
+      withdrawalSaving: false,
+      withdrawalError: '',
+      withdrawalForm: {
+        amount: '',
+        withdrawn_at: '',
+        reference: ''
+      },
       todayDate: d.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
       navItems: [
         {
@@ -550,6 +627,16 @@ export default {
     },
     f() { return this.analytics?.finance || {} },
     c() { return this.analytics?.commission || {} },
+    currentCommission() {
+      const available = this.c.available ?? this.c.current_total
+      if (available !== undefined && available !== null) return Number(available) || 0
+      return Math.max(0, Number(this.c.total_paid || 0) - Number(this.c.total_withdrawn || 0))
+    },
+    todayInputDate() {
+      const d = new Date()
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+      return d.toISOString().slice(0, 10)
+    },
     u() { return this.analytics?.users || {} },
     s() { return this.analytics?.subscriptions || {} },
     revenueChart() { return this.analytics?.charts?.revenue || [] },
@@ -655,6 +742,45 @@ export default {
         return 'Retry commission payment: ' + row.agent_commission_error
       }
       return 'Retry commission payment'
+    },
+    fillWithdrawalBalance() {
+      this.withdrawalError = ''
+      this.withdrawalForm.amount = this.currentCommission ? String(Math.floor(this.currentCommission)) : ''
+      if (!this.withdrawalForm.withdrawn_at) {
+        this.withdrawalForm.withdrawn_at = this.todayInputDate
+      }
+    },
+    async recordCommissionWithdrawal() {
+      const amount = Number(this.withdrawalForm.amount)
+      this.withdrawalError = ''
+
+      if (!amount || amount < 1) {
+        this.withdrawalError = 'Enter a withdrawal amount.'
+        return
+      }
+
+      this.withdrawalSaving = true
+      try {
+        await devApi.post('/api/analytics/developer/commission-withdrawals', {
+          amount,
+          withdrawn_at: this.withdrawalForm.withdrawn_at || undefined,
+          reference: this.withdrawalForm.reference || undefined
+        })
+        this.withdrawalForm = {
+          amount: '',
+          withdrawn_at: '',
+          reference: ''
+        }
+        await this.fetchAnalytics()
+      } catch (err) {
+        const errors = err.response?.data?.errors || {}
+        this.withdrawalError = errors.amount?.[0]
+          || errors.withdrawn_at?.[0]
+          || err.response?.data?.message
+          || 'Could not record withdrawal. Please try again.'
+      } finally {
+        this.withdrawalSaving = false
+      }
     },
     async retryCommission(row) {
       if (!this.canRetryCommission(row) || this.retryingCommission[row.id]) return
@@ -1313,6 +1439,130 @@ export default {
 
 .text-gold { color: #f59e0b; }
 
+/* ── JPESA withdrawal ledger ─────────────────────────────────────────────── */
+.withdrawal-card {
+  border-color: rgba(20, 184, 166, 0.22);
+}
+
+.withdrawal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.withdrawal-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.withdrawal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.withdrawal-field span {
+  color: #6b7280;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.withdrawal-field input {
+  width: 100%;
+  height: 38px;
+  background: #0f1623;
+  border: 1px solid #253050;
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-size: 13px;
+  outline: none;
+  padding: 0 10px;
+}
+
+.withdrawal-field input:focus {
+  border-color: rgba(20, 184, 166, 0.58);
+}
+
+.withdrawal-submit,
+.withdrawal-secondary {
+  height: 38px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.withdrawal-submit {
+  background: rgba(20, 184, 166, 0.18);
+  border: 1px solid rgba(20, 184, 166, 0.36);
+  color: #2dd4bf;
+  padding: 0 14px;
+}
+
+.withdrawal-secondary {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  color: #f59e0b;
+  padding: 0 12px;
+}
+
+.withdrawal-submit:hover,
+.withdrawal-secondary:hover {
+  filter: brightness(1.12);
+}
+
+.withdrawal-submit:disabled,
+.withdrawal-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.withdrawal-error {
+  color: #ef4444;
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+
+.withdrawal-list {
+  border-top: 1px solid #1a2540;
+  margin-top: 14px;
+  padding-top: 8px;
+}
+
+.withdrawal-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 120px;
+  gap: 10px;
+  align-items: center;
+  min-height: 30px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.withdrawal-date {
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.withdrawal-ref {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.withdrawal-amount {
+  color: #2dd4bf;
+  font-weight: 800;
+  text-align: right;
+}
+
 /* ── Data Table ──────────────────────────────────────────────────────────── */
 .table-wrap {
   overflow-x: auto;
@@ -1443,6 +1693,8 @@ code {
   .kpi-grid       { grid-template-columns: repeat(2, 1fr); }
   .two-col-grid   { grid-template-columns: 1fr; }
   .chart-row      { grid-template-columns: 1fr; }
+  .withdrawal-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .withdrawal-submit { width: 100%; }
 }
 
 @media (max-width: 768px) {
@@ -1451,5 +1703,8 @@ code {
   .kpi-grid       { grid-template-columns: 1fr 1fr; }
   .d-body         { padding: 16px; }
   .d-header       { padding: 16px; }
+  .withdrawal-head { flex-direction: column; }
+  .withdrawal-form { grid-template-columns: 1fr; }
+  .withdrawal-row  { grid-template-columns: 78px 1fr 104px; }
 }
 </style>
