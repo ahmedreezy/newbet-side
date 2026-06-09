@@ -13,13 +13,24 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename:    (_req, file, cb) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')
-    cb(null, `freetip_${Date.now()}_${safe}`)
+    const prefix = file.fieldname === 'ad_file' ? 'ad_' : 'freetip_'
+    cb(null, `${prefix}${Date.now()}_${safe}`)
   }
 })
+const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const adMimeTypes = [
+  ...imageMimeTypes,
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime'
+]
 const fileFilter = (_req, file, cb) => {
-  cb(null, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype))
+  cb(null, imageMimeTypes.includes(file.mimetype))
 }
+const adFileFilter = (_req, file, cb) => cb(null, adMimeTypes.includes(file.mimetype))
 const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } })
+const adUpload = multer({ storage, fileFilter: adFileFilter, limits: { fileSize: 50 * 1024 * 1024 } })
 
 async function getVipConfig(client) {
   const { rows } = await (client || pool).query('SELECT key, value FROM vip_config')
@@ -33,6 +44,22 @@ async function getVipConfig(client) {
   ]
   for (const k of priceKeys) { if (cfg[k]) cfg[k] = parseFloat(cfg[k]) }
   return cfg
+}
+
+async function setVipConfig(client, key, value) {
+  await client.query(`
+    INSERT INTO vip_config (key, value) VALUES ($1, $2)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+  `, [key, String(value)])
+}
+
+function isLocalUpload(url) {
+  return typeof url === 'string' && url.startsWith('/uploads/')
+}
+
+function deleteLocalUpload(url) {
+  if (!isLocalUpload(url)) return
+  try { fs.unlinkSync(path.join(UPLOADS_DIR, path.basename(url))) } catch {}
 }
 
 // GET the free_odd2 config (public)
@@ -75,6 +102,66 @@ router.put('/free-odd2', auth, upload.single('image'), async (req, res) => {
   }
 })
 
+router.post('/ad-media', auth, adUpload.single('ad_file'), async (req, res) => {
+  const type = String(req.body.ad_media_type || req.body.type || '').trim()
+  const allowedTypes = ['image', 'video', 'link']
+
+  if (!allowedTypes.includes(type)) {
+    if (req.file) deleteLocalUpload(`/uploads/${req.file.filename}`)
+    return res.status(422).json({ error: 'Advertisement type must be image, video, or link.' })
+  }
+
+  const client = await pool.connect()
+  try {
+    const { rows } = await client.query(`
+      SELECT key, value FROM vip_config
+      WHERE key IN ('ad_media_type', 'ad_media_url', 'ad_video_url')
+    `)
+    const current = Object.fromEntries(rows.map(r => [r.key, r.value]))
+    const currentUrl = current.ad_media_url || current.ad_video_url || ''
+    const currentType = current.ad_media_type || (currentUrl ? 'video' : '')
+    let mediaUrl = currentUrl
+
+    if (type === 'link') {
+      mediaUrl = String(req.body.ad_url || '').trim()
+      if (!/^https?:\/\//i.test(mediaUrl)) {
+        if (req.file) deleteLocalUpload(`/uploads/${req.file.filename}`)
+        return res.status(422).json({ error: 'Enter a valid advertisement link.' })
+      }
+      deleteLocalUpload(currentUrl)
+    } else if (req.file) {
+      mediaUrl = `/uploads/${req.file.filename}`
+      const fileIsVideo = req.file.mimetype.startsWith('video/')
+      if ((type === 'video') !== fileIsVideo) {
+        deleteLocalUpload(mediaUrl)
+        return res.status(422).json({ error: type === 'video' ? 'Choose a valid video file.' : 'Choose a valid picture file.' })
+      }
+      deleteLocalUpload(currentUrl)
+    } else if (!mediaUrl || currentType !== type) {
+      return res.status(422).json({ error: type === 'video' ? 'Choose a video file.' : 'Choose a picture file.' })
+    }
+
+    await client.query('BEGIN')
+    await setVipConfig(client, 'ad_media_type', type)
+    await setVipConfig(client, 'ad_media_url', mediaUrl)
+    await setVipConfig(client, 'ad_video_url', type === 'video' ? mediaUrl : '')
+    await client.query('COMMIT')
+
+    res.json({
+      ad_media_type: type,
+      ad_media_url: mediaUrl,
+      ad_video_url: type === 'video' ? mediaUrl : ''
+    })
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {})
+    if (req.file) deleteLocalUpload(`/uploads/${req.file.filename}`)
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  } finally {
+    client.release()
+  }
+})
+
 // GET VIP config (public)
 router.get('/vip-config', async (req, res) => {
   try {
@@ -93,7 +180,7 @@ router.put('/vip-config', auth, async (req, res) => {
     'current_betslip_link', 'current_betslip_code',
     'daily_betslip_link', 'daily_betslip_code',
     'weekly_betslip_link', 'weekly_betslip_code',
-    'ad_video_url',
+    'ad_video_url', 'ad_media_type', 'ad_media_url',
     // Per-package prices
     'odds_1_5_weekly_price',
     'odds_2_daily_price', 'odds_2_weekly_price',
