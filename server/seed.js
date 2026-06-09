@@ -15,7 +15,9 @@ const VIP_DEFAULTS = {
   daily_betslip_code:    '',
   weekly_betslip_link:   '',
   weekly_betslip_code:   '',
-  ad_video_url:          ''
+  ad_video_url:          '',
+  ad_media_type:         'video',
+  ad_media_url:          ''
 }
 
 async function seed() {
