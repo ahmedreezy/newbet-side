@@ -56,7 +56,7 @@
               <!-- Active toggle -->
               <td class="td-center">
                 <label class="toggle">
-                  <input type="checkbox" v-model="pkg._isActive" @change="pkg._dirty = true" />
+                  <input type="checkbox" v-model="pkg._isActive" @change="onActiveChange(pkg)" />
                   <span class="toggle-track"></span>
                 </label>
               </td>
@@ -67,7 +67,6 @@
                   v-model="pkg._deadline"
                   type="datetime-local"
                   class="field-deadline"
-                  :min="minDeadlineInput()"
                   @change="pkg._dirty = true"
                   title="Block new subscriptions after this date and time (leave blank for no deadline)"
                 />
@@ -159,13 +158,13 @@
           <div class="special-field special-toggle-field">
             <label>Active</label>
             <label class="toggle">
-              <input type="checkbox" v-model="specialPackage._isActive" @change="specialPackage._dirty = true" />
+              <input type="checkbox" v-model="specialPackage._isActive" @change="onActiveChange(specialPackage)" />
               <span class="toggle-track"></span>
             </label>
           </div>
           <div class="special-field">
             <label>Deadline</label>
-            <input v-model="specialPackage._deadline" type="datetime-local" :min="minDeadlineInput()" @change="specialPackage._dirty = true" />
+            <input v-model="specialPackage._deadline" type="datetime-local" @change="specialPackage._dirty = true" />
           </div>
           <div class="special-field special-field-wide">
             <label>Betslip Link</label>
@@ -302,9 +301,6 @@ export default {
     currentDeadlineInput() {
       return this.formatDateTimeInput(new Date())
     },
-    minDeadlineInput() {
-      return this.formatDateTimeInput(new Date(Date.now() + 60000))
-    },
     normalizeDeadlineInput(value) {
       if (!value) return ''
       if (/^\d{2}:\d{2}$/.test(value)) return `${this.todayInputDate()}T${value}`
@@ -397,10 +393,19 @@ export default {
       pkg._clearPhoto = true
       pkg._dirty      = true
     },
+    onActiveChange(pkg) {
+      if (pkg._isActive && this.isPastDeadline(pkg._deadline)) {
+        this.saveError = 'Packages with past deadlines cannot be activated. Set a future deadline first.'
+        pkg._isActive = false
+        return
+      }
+      this.saveError = ''
+      pkg._dirty = true
+    },
     async savePackage(pkg) {
       this.saveError = ''
-      if (this.isPastDeadline(pkg._deadline)) {
-        this.saveError = 'Deadline must be a future date and time.'
+      if (pkg._isActive && this.isPastDeadline(pkg._deadline)) {
+        this.saveError = 'Packages with past deadlines cannot be activated. Set a future deadline first.'
         return
       }
       pkg._saving   = true

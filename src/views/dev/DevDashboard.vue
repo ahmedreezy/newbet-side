@@ -3,7 +3,7 @@
     <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
     <aside class="d-sidebar">
       <div class="d-logo">
-        <span class="d-mark">AX</span>
+        <img class="d-mark" src="@/assets/almax-mark.png" alt="Almax logo" />
         <div>
           <div class="d-brand">ALMAX</div>
           <div class="d-brand-sub">DEV CONSOLE</div>
@@ -84,14 +84,14 @@
               <p class="kpi-sub">{{ formatUGX(f.revenue_this_week) }} this week</p>
             </div>
             <div class="kpi-card kpi-gold">
-              <p class="kpi-label">Commission Earned</p>
-              <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
-              <p class="kpi-sub">Rate: {{ (c.ratio * 100).toFixed(0) }}% per payment</p>
+              <p class="kpi-label">Available Commission</p>
+              <p class="kpi-value">{{ formatUGX(currentCommission) }}</p>
+              <p class="kpi-sub">{{ formatUGX(c.total_withdrawn) }} withdrawn</p>
             </div>
             <div class="kpi-card kpi-teal">
-              <p class="kpi-label">Commission Paid Out</p>
-              <p class="kpi-value">{{ formatUGX(c.total_paid) }}</p>
-              <p class="kpi-sub">{{ formatUGX(c.outstanding) }} outstanding</p>
+              <p class="kpi-label">Overall Commission</p>
+              <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
+              <p class="kpi-sub">{{ formatUGX(c.wallet_received ?? c.total_paid) }} sent to JPESA</p>
             </div>
           </div>
 
@@ -269,7 +269,7 @@
                   </span>
                 </p>
                 <p class="comm-banner-sub">
-                  <template v-if="c.enabled">Active — 10% is being collected on every confirmed payment and tracked here.</template>
+                  <template v-if="c.enabled">Active - available balance is reduced by recorded JPESA withdrawals.</template>
                   <template v-else>Disabled — set <code>JPESA_AGENT_COMMISSION_ENABLED=true</code> in .env to activate.</template>
                 </p>
               </div>
@@ -280,8 +280,12 @@
                 <span class="comm-stat-val">{{ (c.ratio * 100).toFixed(1) }}%</span>
               </div>
               <div class="comm-stat">
-                <span class="comm-stat-label">Outstanding</span>
-                <span class="comm-stat-val" :class="c.outstanding > 0 ? 'text-gold' : ''">{{ formatUGX(c.outstanding) }}</span>
+                <span class="comm-stat-label">Available</span>
+                <span class="comm-stat-val" :class="currentCommission > 0 ? 'text-gold' : ''">{{ formatUGX(currentCommission) }}</span>
+              </div>
+              <div class="comm-stat">
+                <span class="comm-stat-label">Overall</span>
+                <span class="comm-stat-val">{{ formatUGX(c.total_earned) }}</span>
               </div>
             </div>
           </div>
@@ -289,24 +293,90 @@
           <!-- Commission KPI cards -->
           <div class="kpi-grid" style="margin-top:20px">
             <div class="kpi-card kpi-gold">
-              <p class="kpi-label">Total Earned</p>
+              <p class="kpi-label">Total Overall</p>
               <p class="kpi-value">{{ formatUGX(c.total_earned) }}</p>
               <p class="kpi-sub">All time commission</p>
             </div>
             <div class="kpi-card kpi-green">
-              <p class="kpi-label">Paid to Wallet</p>
-              <p class="kpi-value">{{ formatUGX(c.total_paid) }}</p>
-              <p class="kpi-sub">{{ formatNum(c.by_status?.completed?.count ?? 0) }} transfers completed</p>
+              <p class="kpi-label">Available Now</p>
+              <p class="kpi-value">{{ formatUGX(currentCommission) }}</p>
+              <p class="kpi-sub">After JPESA withdrawals</p>
             </div>
             <div class="kpi-card kpi-blue">
-              <p class="kpi-label">In Progress</p>
-              <p class="kpi-value kpi-value--md">{{ formatUGX(c.by_status?.processing?.amount ?? 0) }}</p>
-              <p class="kpi-sub">{{ formatNum(c.by_status?.processing?.count ?? 0) }} transfers</p>
+              <p class="kpi-label">Withdrawn</p>
+              <p class="kpi-value kpi-value--md">{{ formatUGX(c.total_withdrawn) }}</p>
+              <p class="kpi-sub">{{ formatNum(c.withdrawals?.length ?? 0) }} recent records</p>
             </div>
             <div class="kpi-card kpi-warn">
-              <p class="kpi-label">Pending / Failed</p>
-              <p class="kpi-value kpi-value--md">{{ formatUGX((c.by_status?.pending?.amount ?? 0) + (c.by_status?.failed?.amount ?? 0)) }}</p>
-              <p class="kpi-sub">{{ formatNum((c.by_status?.pending?.count ?? 0) + (c.by_status?.failed?.count ?? 0)) }} entries</p>
+              <p class="kpi-label">Sent to JPESA</p>
+              <p class="kpi-value kpi-value--md">{{ formatUGX(c.wallet_received ?? c.total_paid) }}</p>
+              <p class="kpi-sub">{{ formatNum(c.by_status?.completed?.count ?? 0) }} transfers completed</p>
+            </div>
+          </div>
+
+          <div class="section-card withdrawal-card" style="margin-top:24px">
+            <div class="withdrawal-head">
+              <div>
+                <p class="section-card-title">JPESA Withdrawals</p>
+                <p class="section-card-sub">{{ c.wallet_account || 'JPESA wallet' }}</p>
+              </div>
+              <button
+                type="button"
+                class="withdrawal-secondary"
+                @click="fillWithdrawalBalance"
+                :disabled="!currentCommission || withdrawalSaving"
+              >
+                Full Balance
+              </button>
+            </div>
+
+            <form class="withdrawal-form" @submit.prevent="recordCommissionWithdrawal">
+              <label class="withdrawal-field">
+                <span>Amount</span>
+                <input
+                  v-model="withdrawalForm.amount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  :max="currentCommission || null"
+                  placeholder="UGX"
+                  required
+                />
+              </label>
+              <label class="withdrawal-field">
+                <span>Date</span>
+                <input
+                  v-model="withdrawalForm.withdrawn_at"
+                  type="date"
+                  :max="todayInputDate"
+                />
+              </label>
+              <label class="withdrawal-field withdrawal-field--wide">
+                <span>Reference</span>
+                <input
+                  v-model.trim="withdrawalForm.reference"
+                  type="text"
+                  maxlength="200"
+                  placeholder="JPESA ref"
+                />
+              </label>
+              <button
+                type="submit"
+                class="withdrawal-submit"
+                :disabled="withdrawalSaving || !Number(withdrawalForm.amount)"
+              >
+                {{ withdrawalSaving ? 'Recording' : 'Record Withdrawal' }}
+              </button>
+            </form>
+
+            <p v-if="withdrawalError" class="withdrawal-error">{{ withdrawalError }}</p>
+
+            <div v-if="c.withdrawals && c.withdrawals.length" class="withdrawal-list">
+              <div v-for="item in c.withdrawals" :key="item.id" class="withdrawal-row">
+                <span class="withdrawal-date">{{ fmtDate(item.withdrawn_at) }}</span>
+                <span class="withdrawal-ref">{{ item.reference || 'Withdrawal' }}</span>
+                <span class="withdrawal-amount">{{ formatUGX(item.amount) }}</span>
+              </div>
             </div>
           </div>
 
@@ -355,8 +425,9 @@
                     <th>Plan</th>
                     <th>Method</th>
                     <th>Payment</th>
-                    <th>Commission ({{ (c.ratio * 100).toFixed(0) }}%)</th>
+                    <th>Commission (10%)</th>
                     <th>Status</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -371,10 +442,31 @@
                       <span :class="['status-badge', statusClass(row.agent_commission_status)]">
                         {{ statusLabel(row.agent_commission_status) }}
                       </span>
+                      <p v-if="row.agent_commission_error" class="commission-error" :title="row.agent_commission_error">
+                        {{ row.agent_commission_error }}
+                      </p>
+                    </td>
+                    <td class="td-action">
+                      <button
+                        v-if="canRetryCommission(row)"
+                        class="retry-commission-btn"
+                        @click="retryCommission(row)"
+                        :disabled="retryingCommission[row.id]"
+                        :title="commissionRetryTitle(row)"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="23 4 23 10 17 10"></polyline>
+                          <polyline points="1 20 1 14 7 14"></polyline>
+                          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10"></path>
+                          <path d="M20.49 15a9 9 0 01-14.85 3.36L1 14"></path>
+                        </svg>
+                        <span>{{ retryingCommission[row.id] ? 'Retrying' : 'Retry' }}</span>
+                      </button>
+                      <span v-else class="action-muted">-</span>
                     </td>
                   </tr>
                   <tr v-if="!c.recent || !c.recent.length">
-                    <td colspan="7" class="td-empty">
+                    <td colspan="8" class="td-empty">
                       <template v-if="c.enabled">Commission is live — records will appear here as payments are confirmed.</template>
                       <template v-else>Commission is disabled. Set <code>JPESA_AGENT_COMMISSION_ENABLED=true</code> to start tracking.</template>
                     </td>
@@ -486,6 +578,14 @@ export default {
       loading: true,
       error: '',
       analytics: null,
+      retryingCommission: {},
+      withdrawalSaving: false,
+      withdrawalError: '',
+      withdrawalForm: {
+        amount: '',
+        withdrawn_at: '',
+        reference: ''
+      },
       todayDate: d.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
       navItems: [
         {
@@ -527,6 +627,16 @@ export default {
     },
     f() { return this.analytics?.finance || {} },
     c() { return this.analytics?.commission || {} },
+    currentCommission() {
+      const available = this.c.available ?? this.c.current_total
+      if (available !== undefined && available !== null) return Number(available) || 0
+      return Math.max(0, Number(this.c.total_paid || 0) - Number(this.c.total_withdrawn || 0))
+    },
+    todayInputDate() {
+      const d = new Date()
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+      return d.toISOString().slice(0, 10)
+    },
     u() { return this.analytics?.users || {} },
     s() { return this.analytics?.subscriptions || {} },
     revenueChart() { return this.analytics?.charts?.revenue || [] },
@@ -621,6 +731,77 @@ export default {
         failed:     'Failed'
       }
       return map[status] || (status ? status : 'Queued')
+    },
+    canRetryCommission(row) {
+      if (!this.c.enabled || !row) return false
+      const status = String(row.agent_commission_status || '').toLowerCase()
+      return status === 'failed' || status === 'pending'
+    },
+    commissionRetryTitle(row) {
+      if (row?.agent_commission_error) {
+        return 'Retry commission payment: ' + row.agent_commission_error
+      }
+      return 'Retry commission payment'
+    },
+    fillWithdrawalBalance() {
+      this.withdrawalError = ''
+      this.withdrawalForm.amount = this.currentCommission ? String(Math.floor(this.currentCommission)) : ''
+      if (!this.withdrawalForm.withdrawn_at) {
+        this.withdrawalForm.withdrawn_at = this.todayInputDate
+      }
+    },
+    async recordCommissionWithdrawal() {
+      const amount = Number(this.withdrawalForm.amount)
+      this.withdrawalError = ''
+
+      if (!amount || amount < 1) {
+        this.withdrawalError = 'Enter a withdrawal amount.'
+        return
+      }
+
+      this.withdrawalSaving = true
+      try {
+        await devApi.post('/api/analytics/developer/commission-withdrawals', {
+          amount,
+          withdrawn_at: this.withdrawalForm.withdrawn_at || undefined,
+          reference: this.withdrawalForm.reference || undefined
+        })
+        this.withdrawalForm = {
+          amount: '',
+          withdrawn_at: '',
+          reference: ''
+        }
+        await this.fetchAnalytics()
+      } catch (err) {
+        const errors = err.response?.data?.errors || {}
+        this.withdrawalError = errors.amount?.[0]
+          || errors.withdrawn_at?.[0]
+          || err.response?.data?.message
+          || 'Could not record withdrawal. Please try again.'
+      } finally {
+        this.withdrawalSaving = false
+      }
+    },
+    async retryCommission(row) {
+      if (!this.canRetryCommission(row) || this.retryingCommission[row.id]) return
+      if (!confirm('Retry commission payment for payment #' + row.id + '?')) return
+
+      this.retryingCommission = { ...this.retryingCommission, [row.id]: true }
+      try {
+        const { data } = await devApi.post('/api/analytics/developer/payments/' + row.id + '/retry-commission')
+        await this.fetchAnalytics()
+
+        if (data && data.success === false) {
+          alert(data.message || 'Commission retry did not complete.')
+        }
+      } catch (err) {
+        const message = err.response?.data?.message
+          || err.response?.data?.error
+          || 'Commission retry failed. Please try again.'
+        alert(message)
+      } finally {
+        this.retryingCommission = { ...this.retryingCommission, [row.id]: false }
+      }
     }
   }
 }
@@ -658,16 +839,11 @@ export default {
 }
 
 .d-mark {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #0a0e1a;
-  font-size: 14px;
-  font-weight: 900;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.25));
   flex-shrink: 0;
 }
 
@@ -1263,6 +1439,130 @@ export default {
 
 .text-gold { color: #f59e0b; }
 
+/* ── JPESA withdrawal ledger ─────────────────────────────────────────────── */
+.withdrawal-card {
+  border-color: rgba(20, 184, 166, 0.22);
+}
+
+.withdrawal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.withdrawal-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.withdrawal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.withdrawal-field span {
+  color: #6b7280;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.withdrawal-field input {
+  width: 100%;
+  height: 38px;
+  background: #0f1623;
+  border: 1px solid #253050;
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-size: 13px;
+  outline: none;
+  padding: 0 10px;
+}
+
+.withdrawal-field input:focus {
+  border-color: rgba(20, 184, 166, 0.58);
+}
+
+.withdrawal-submit,
+.withdrawal-secondary {
+  height: 38px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.withdrawal-submit {
+  background: rgba(20, 184, 166, 0.18);
+  border: 1px solid rgba(20, 184, 166, 0.36);
+  color: #2dd4bf;
+  padding: 0 14px;
+}
+
+.withdrawal-secondary {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  color: #f59e0b;
+  padding: 0 12px;
+}
+
+.withdrawal-submit:hover,
+.withdrawal-secondary:hover {
+  filter: brightness(1.12);
+}
+
+.withdrawal-submit:disabled,
+.withdrawal-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.withdrawal-error {
+  color: #ef4444;
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+
+.withdrawal-list {
+  border-top: 1px solid #1a2540;
+  margin-top: 14px;
+  padding-top: 8px;
+}
+
+.withdrawal-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 120px;
+  gap: 10px;
+  align-items: center;
+  min-height: 30px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.withdrawal-date {
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.withdrawal-ref {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.withdrawal-amount {
+  color: #2dd4bf;
+  font-weight: 800;
+  text-align: right;
+}
+
 /* ── Data Table ──────────────────────────────────────────────────────────── */
 .table-wrap {
   overflow-x: auto;
@@ -1303,6 +1603,7 @@ export default {
 .td-method  { font-weight: 600; color: #3b82f6; }
 .td-amount  { font-weight: 700; color: #e5e7eb; text-align: right; }
 .td-commission { font-weight: 800; color: #f59e0b; text-align: right; }
+.td-action  { text-align: right; white-space: nowrap; }
 .td-empty   { text-align: center; color: #374151; padding: 24px; font-size: 12px; }
 
 code {
@@ -1338,11 +1639,62 @@ code {
 .st-fail { background: rgba(239,68,68,0.12);   color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
 .st-none { background: rgba(107,114,128,0.12); color: #6b7280; border: 1px solid rgba(107,114,128,0.2); }
 
+.commission-error {
+  max-width: 230px;
+  margin: 6px 0 0;
+  color: #ef4444;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retry-commission-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 72px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(245,158,11,0.32);
+  border-radius: 6px;
+  background: rgba(245,158,11,0.12);
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.retry-commission-btn svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.retry-commission-btn:hover {
+  background: rgba(245,158,11,0.2);
+  border-color: rgba(245,158,11,0.48);
+}
+
+.retry-commission-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.action-muted {
+  color: #374151;
+  font-size: 12px;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .kpi-grid       { grid-template-columns: repeat(2, 1fr); }
   .two-col-grid   { grid-template-columns: 1fr; }
   .chart-row      { grid-template-columns: 1fr; }
+  .withdrawal-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .withdrawal-submit { width: 100%; }
 }
 
 @media (max-width: 768px) {
@@ -1351,5 +1703,8 @@ code {
   .kpi-grid       { grid-template-columns: 1fr 1fr; }
   .d-body         { padding: 16px; }
   .d-header       { padding: 16px; }
+  .withdrawal-head { flex-direction: column; }
+  .withdrawal-form { grid-template-columns: 1fr; }
+  .withdrawal-row  { grid-template-columns: 78px 1fr 104px; }
 }
 </style>

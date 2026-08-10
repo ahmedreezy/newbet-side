@@ -4,6 +4,7 @@ const https    = require('https')
 const http     = require('http')
 const { pool } = require('../db')
 const auth     = require('../middleware/authMiddleware')
+const { trackCommissionForSubscription } = require('../utils/commission')
 
 function kampalaNowInput() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -78,6 +79,10 @@ function httpPost (urlStr, body, headers) {
 }
 
 async function initiateSTKPush ({ phone, amount, reference }) {
+  if (process.env.NODE_ENV === 'test') {
+    return { success: false, reference, pending: true, message: 'Payment provider skipped in tests.' }
+  }
+
   const apiKey      = process.env.JPESA_API_KEY || '79F36A45DE71FF4196A5C0920C5ECD7B'
   const apiUrl      = process.env.JPESA_API_URL || 'https://my.jpesa.com/api/'
   const callbackUrl = process.env.JPESA_CALLBACK_URL || 'https://www.almaxpredictions.com/api/payments/webhook'
@@ -159,11 +164,13 @@ router.get('/', auth, async (req, res) => {
   try {
     // Timeout pending subscriptions/payments older than 1 hour
     await pool.query(`
-      UPDATE payments p SET status = 'failed'
-      FROM subscriptions s
-      WHERE p.subscription_id = s.id
-        AND p.status = 'pending' AND s.status = 'pending'
-        AND s.created_at < NOW() - INTERVAL '1 hour'
+      UPDATE payments SET status = 'failed'
+      WHERE status = 'pending'
+        AND subscription_id IN (
+          SELECT id FROM subscriptions
+          WHERE status = 'pending'
+            AND created_at < NOW() - INTERVAL '1 hour'
+        )
     `)
     await pool.query(`UPDATE subscriptions SET status = 'failed' WHERE status = 'pending' AND created_at < NOW() - INTERVAL '1 hour'`)
     await pool.query(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()`)
@@ -261,12 +268,15 @@ router.post('/', async (req, res) => {
 
     // Fail stale pending records for this user+group before checking for duplicates
     await pool.query(`
-      UPDATE payments p SET status = 'failed'
-      FROM subscriptions s
-      WHERE p.subscription_id = s.id
-        AND p.status = 'pending' AND s.status = 'pending'
-        AND s.user_id = $1 AND s.group_id = $2
-        AND s.created_at < NOW() - INTERVAL '1 hour'
+      UPDATE payments SET status = 'failed'
+      WHERE status = 'pending'
+        AND subscription_id IN (
+          SELECT id FROM subscriptions
+          WHERE status = 'pending'
+            AND user_id = $1
+            AND group_id = $2
+            AND created_at < NOW() - INTERVAL '1 hour'
+        )
     `, [parsedUserId, parsedGroupId])
     await pool.query(`
       UPDATE subscriptions SET status = 'failed'
@@ -356,6 +366,7 @@ router.patch('/:id', auth, async (req, res) => {
       `, [finalLink, finalCode, interval, id])
 
       await pool.query(`UPDATE payments SET status = 'confirmed' WHERE subscription_id = $1`, [id])
+      await trackCommissionForSubscription(pool, id)
       return res.json(rowToSub(updated, true))
     }
 
